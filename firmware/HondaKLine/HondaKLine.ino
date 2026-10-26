@@ -5,6 +5,10 @@
 //   W                 -> wake-up pulse + init handshake, "OK <reply hex>" or "ERR ..."
 //   T <hex bytes>     -> send packet (checksum added here), "R <reply hex>" or "ERR ..."
 //   B <hex bytes>     -> send packet as given (no checksum added, no reply expected)
+// Bench tests (no ECU needed, only the interface and 12 V on its pull-up):
+//   E                 -> echo test: send 55 AA 00 FF and check each byte comes back
+//   L                 -> read the K-line level: "OK LEVEL HIGH" (idle, ~12 V) or "OK LEVEL LOW"
+//   D 0 / D 1         -> hold the K-line low (check with a multimeter) / release it
 //
 // The PC does all decoding. This firmware only handles the timing: the wake-up pulse, half-duplex echo removal
 // and reading one reply frame. A reply frame is: <type> <length> <payload...> <checksum>, where length counts
@@ -162,14 +166,44 @@ static int parseHex(const String &s, uint8_t *out, size_t cap) {
   return nib < 0 ? (int)n : -1;
 }
 
+static bool held = false;  // K-line held low by "D 0"
+
+static void driveLine(bool low) {
+  K.end();
+  pinMode(PIN_KTX, OUTPUT);
+  digitalWrite(PIN_KTX, (low == KLINE_INVERTED) ? HIGH : LOW);
+}
+
+static void release() {
+  driveLine(false);
+  klineBegin();
+  held = false;
+}
+
 static void handleLine(String line) {
   line.trim();
   if (line.length() == 0) return;
   char cmd = toupper(line[0]);
   String rest = line.substring(1);
+  rest.trim();
   digitalWrite(PIN_LED, HIGH);
+  if (held && cmd != 'D') release();
 
-  if (cmd == 'P') {
+  if (cmd == 'D') {
+    if (rest == "0") { driveLine(true); held = true; Serial.println("OK HOLDING LOW"); }
+    else { release(); Serial.println("OK RELEASED"); }
+  } else if (cmd == 'L') {
+    K.end();
+    pinMode(PIN_KRX, INPUT);
+    delay(2);
+    bool pinHigh = digitalRead(PIN_KRX);
+    klineBegin();
+    bool lineHigh = KLINE_INVERTED ? !pinHigh : pinHigh;
+    Serial.println(lineHigh ? "OK LEVEL HIGH" : "OK LEVEL LOW");
+  } else if (cmd == 'E') {
+    static const uint8_t pat[] = {0x55, 0xAA, 0x00, 0xFF};
+    if (sendPacket(pat, sizeof pat)) Serial.println("OK ECHO");
+  } else if (cmd == 'P') {
     Serial.println("OK HONDA-KLINE 1");
   } else if (cmd == 'W') {
     wakeUp();

@@ -54,6 +54,17 @@ Both stages invert, and the firmware turns on the UART's own inversion to undo i
   Check against the diagram.
 - SCS: not used here (shorting it to GND makes the dash blink stored codes).
 
+## Bring-up (do these in order)
+1. **Board only:** flash the firmware, then type `P` in the Serial Monitor (115200). Expect `OK HONDA-KLINE 1`.
+2. **Bench, no bike:** build the interface and put 9-12 V on the pull-up (a 9 V battery or a bench supply in place of
+   the DLC 12 V pin, its negative to GND). Then run `python pc/honda_dlc.py COM5 check`. Steps 2 (line idles high)
+   and 3 (echo) should pass. Step 4 fails without an ECU, which is expected.
+   - Manual checks: `D 0` should read about 0-1 V on the K-line with a multimeter, `D 1` should read about 12 V,
+     and `L` reports the level.
+3. **On the bike:** key on, kill switch at RUN. Connect to the DLC and run `check` again. All five steps should
+   pass. If init fails, swap nothing else first: check that the K-line is on the right DLC pin.
+4. Then `dlc_gui.py` → Connect. Blip the throttle and watch which raw bytes change.
+
 ## Firmware
 Arduino IDE → install the "esp32" boards package → board **LOLIN S2 Mini**, *USB CDC On Boot: Enabled*. Open
 `firmware/HondaKLine/HondaKLine.ino` and upload. (If the upload doesn't start, hold button 0, tap RST, and release.)

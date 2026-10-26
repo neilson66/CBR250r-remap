@@ -12,6 +12,7 @@ Field layouts below are the commonly published ones for Honda bikes of this era.
 a CBR250R (MC41): use the raw view / dump to confirm each byte moves the way its name says.
 
 Command line:
+  python honda_dlc.py COM5 check         step-by-step hardware check (bench or bike), explains failures
   python honda_dlc.py COM5 live          live data from table 0x11
   python honda_dlc.py COM5 dump          try every table 0x00-0xFF, save what answers
   python honda_dlc.py COM5 dtc           read fault-code tables
@@ -245,11 +246,49 @@ def open_link(port: str):
     return SimLink() if port.lower() == "demo" else SerialLink(port)
 
 
+CHECK_HELP = {
+    "level": "K-line reads LOW at idle. Is 12 V on the pull-up (key on / bench supply)? Is Q1 always on "
+             "(GPIO17 wiring, transistor legs) or the K-line shorted to GND? Check D1 points the right way.",
+    "echo": "Bytes didn't come back. Check GPIO18 / Q2 / R3 / R4 / R5 and that GPIO17 reaches Q1 through R2. "
+            "Transistor legs: 2N3904 is E-B-C with the flat face towards you.",
+    "init": "Interface works but the ECU didn't answer. Key on, kill switch at RUN, side stand up. Is the "
+            "K-line on the right DLC pin? Try again; some ECUs only answer within a few seconds of key-on.",
+}
+
+
+def check(port: str) -> int:
+    """Step-by-step check of the bridge, the interface and then the ECU."""
+    link = SerialLink(port)
+    print("1. bridge on", port, "... OK")
+    steps = [("level", "L", "OK LEVEL HIGH", "2. K-line idles high"),
+             ("echo", "E", "OK ECHO", "3. send/receive echo"),
+             ("init", "W", "OK 02 04 00 FA", "4. ECU wake-up and init")]
+    try:
+        for key, cmd, want, label in steps:
+            reply = link._cmd(cmd)
+            if reply != want:
+                print(f"{label} ... FAILED ({reply})")
+                print("   ", CHECK_HELP[key])
+                if key == "init":
+                    print("    (Steps 1-3 passed, so the hardware is fine; on the bench without the ECU this is expected.)")
+                return 1
+            print(f"{label} ... OK")
+        ecu = Ecu(link)
+        data = ecu.read_table(0x11)
+        print("5. table 0x11 ...", hexs(data))
+        print("It's talking. Run 'live', 'dtc' or 'dump', or open dlc_gui.py.")
+        return 0
+    finally:
+        link.close()
+
+
 def main(argv):
     if len(argv) < 2:
         print(__doc__)
         return 1
     port, mode = argv[0], argv[1]
+    if mode == "check":
+        return check(port)
     link = open_link(port)
     ecu = Ecu(link)
     try:
