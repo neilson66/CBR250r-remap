@@ -89,21 +89,21 @@
 
   <!-- ESP32-S2 mini -->
   <rect x="740" y="110" width="140" height="420" rx="8" fill="#e8f0ff" stroke="#1565c0" stroke-width="2"/>
-  <text x="810" y="102" text-anchor="middle" font-weight="bold" fill="#1565c0">ESP32-C3 / S2 mini</text>
+  <text x="810" y="102" text-anchor="middle" font-weight="bold" fill="#1565c0">ESP32-C6 (Waveshare)</text>
   <g fill="#fff" stroke="#111" stroke-width="2">
     <circle cx="740" cy="150" r="4"/><circle cx="740" cy="270" r="4"/><circle cx="740" cy="440" r="4"/><circle cx="740" cy="500" r="4"/>
   </g>
   <g fill="#111">
     <text x="752" y="155">3V3</text>
-    <text x="752" y="275">RX: C3 GPIO5</text>
-    <text x="752" y="293" fill="#555">(S2: GPIO18)</text>
-    <text x="752" y="445">TX: C3 GPIO4</text>
-    <text x="752" y="463" fill="#555">(S2: GPIO17)</text>
+    <text x="752" y="275">RX: C6 GPIO3</text>
+    <text x="752" y="293" fill="#555" font-size="11">S3 GPIO2 · C3 GPIO5</text>
+    <text x="752" y="445">TX: C6 GPIO2</text>
+    <text x="752" y="463" fill="#555" font-size="11">S3 GPIO1 · C3 GPIO4</text>
     <text x="752" y="505">GND</text>
   </g>
   <polyline points="736,500 710,500 710,512" stroke="#111" stroke-width="2.5" fill="none"/>
   <use href="#gnd" x="710" y="512"/>
-  <text x="810" y="552" text-anchor="middle" fill="#1565c0">USB-C → laptop (powers the board)</text>
+  <text x="810" y="552" text-anchor="middle" fill="#1565c0">USB-C → laptop, or 12V→USB-C adaptor</text>
 
   <!-- Notes -->
   <rect x="30" y="572" width="900" height="76" rx="6" fill="#f6f6f6" stroke="#ccc"/>

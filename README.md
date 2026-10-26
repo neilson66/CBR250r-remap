@@ -1,17 +1,17 @@
 # Honda DLC Scanner (CBR250R 2011-13, MC41)
 
-Reads live engine data and fault codes from the 4-pin red Honda DLC under the seat. It uses an ESP32-C3 (or ESP32-S2 mini) as a
+Reads live engine data and fault codes from the 4-pin red Honda DLC under the seat. It uses an ESP32 board (main: Waveshare ESP32-C6-LCD-1.47; also ESP32-S3, C3 or S2 mini) as a
 USB-to-K-line bridge and a Python app on the PC.
 
 ```
-Bike DLC ──K-line── 2-transistor interface ── ESP32-C3 ──USB── PC (dlc_gui.py / honda_dlc.py)
+Bike DLC ──K-line── 2-transistor interface ── ESP32-C6 ──USB── PC (dlc_gui.py / honda_dlc.py)
 ```
 
 ## Parts
 
 | Part | Notes |
 |---|---|
-| ESP32-C3 board (e.g. C3 SuperMini) or ESP32-S2 mini | the bridge; powered from the PC's USB |
+| ESP32 board: Waveshare ESP32-C6-LCD-1.47 (main), ESP32-S3, C3 or S2 mini | the bridge; powered over USB-C from the PC, or from a 12 V→USB-C adaptor on the bike |
 | 2 × NPN transistor | 2N3904, BC547 or 2N2222 |
 | 1 × 1 kΩ | Q1 base resistor |
 | 1 × 1 kΩ (½ W is fine) | K-line pull-up to 12 V |
@@ -29,7 +29,18 @@ brought down to 3.3 V, and set `KLINE_INVERTED = false` in the firmware.
 
 ![Wiring diagram](docs/wiring.svg)
 
-Pins: **C3: TX = GPIO4, RX = GPIO5**. S2 mini: TX = GPIO17, RX = GPIO18. The firmware picks them from the chip.
+Pins (the firmware picks them from the chip):
+
+| Board | TX (to R2/Q1) | RX (from Q2/R5) | Avoid |
+|---|---|---|---|
+| **Waveshare ESP32-C6-LCD-1.47** (main) | **GPIO2** | **GPIO3** | 12/13 (USB), 9 (BOOT), 4-7 (SD/LCD) |
+| Waveshare ESP32-S3-LCD-1.47 | GPIO1 | GPIO2 | |
+| ESP32-C3 | GPIO4 | GPIO5 | 18/19 (USB) |
+| ESP32-S2 mini | GPIO17 | GPIO18 | |
+
+**Powering it on the bike** with a 12 V→USB-C adaptor: feed the adaptor from the key-switched Bl/Bu wire (fused,
+1 A) so it can't flatten the battery. Still wire the DLC ground (G) to the board GND. Unplug the adaptor when you
+plug in the laptop (one USB-C port).
 
 Text version:
 
