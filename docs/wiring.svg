@@ -13,9 +13,13 @@
   <text x="90" y="62" text-anchor="middle" font-weight="bold" fill="#b33">Bike DLC (red 4-pin)</text>
   <g text-anchor="end" fill="#111">
     <text x="140" y="115">12V (key on)</text>
+    <text x="140" y="132" fill="#555" font-size="12">Bl/Bu black/blue</text>
     <text x="140" y="205">K-LINE</text>
+    <text x="140" y="222" fill="#555" font-size="12">Y yellow</text>
     <text x="140" y="295">GND</text>
+    <text x="140" y="312" fill="#555" font-size="12">G green</text>
     <text x="140" y="355">SCS</text>
+    <text x="140" y="372" fill="#555" font-size="12">Bu light blue</text>
   </g>
   <g fill="#fff" stroke="#111" stroke-width="2">
     <circle cx="150" cy="110" r="4"/><circle cx="150" cy="200" r="4"/><circle cx="150" cy="290" r="4"/><circle cx="150" cy="350" r="4"/>

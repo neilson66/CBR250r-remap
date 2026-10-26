@@ -49,12 +49,17 @@ DLC GND ── ESP GND
 Both stages invert, and the firmware turns on the UART's own inversion to undo it. Do **not** connect the bike's
 12 V to the ESP32. Only the pull-up uses it.
 
-**Identify the DLC pins with a multimeter first** (check the wiring diagram in the service manual for wire colours):
-- GND: continuity to the frame.
-- 12 V: 12 V with the key on, 0 V off.
-- K-line: also about 12 V with the key on (the ECU pulls it up), but a few volts lower than the 12 V pin under load.
-  Check against the diagram.
-- SCS: not used here (shorting it to GND makes the dash blink stored codes).
+**CBR250R DLC wire colours** (from the wiring diagram, traced to the ECM 33P plug):
+
+| Wire | Signal | ECM pin |
+|---|---|---|
+| **Y** yellow | K-line | 30 (K-LINE) |
+| **Bl/Bu** black/blue | 12 V, key on | 1 (IGP) |
+| **G** green | ground | |
+| **Bu** light blue | SCS: not used here (shorting it to GND makes the dash blink stored codes) | 15 (SCS) |
+
+Check with a multimeter before connecting, key on: Bl/Bu to G should read about 12 V, and Y to G should be close to
+battery voltage (the ECU pulls it up). If Y reads 0 V, stop.
 
 ## Bring-up (do these in order)
 1. **Board only:** flash the firmware, then type `P` in the Serial Monitor (115200). Expect `OK HONDA-KLINE 1`.
