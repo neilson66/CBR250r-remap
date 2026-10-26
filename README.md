@@ -1,17 +1,17 @@
 # Honda DLC Scanner (CBR250R 2011-13, MC41)
 
-Reads live engine data and fault codes from the 4-pin red Honda DLC under the seat. It uses an ESP32-S2 mini as a
+Reads live engine data and fault codes from the 4-pin red Honda DLC under the seat. It uses an ESP32-C3 (or ESP32-S2 mini) as a
 USB-to-K-line bridge and a Python app on the PC.
 
 ```
-Bike DLC ──K-line── 2-transistor interface ── ESP32-S2 mini ──USB── PC (dlc_gui.py / honda_dlc.py)
+Bike DLC ──K-line── 2-transistor interface ── ESP32-C3 ──USB── PC (dlc_gui.py / honda_dlc.py)
 ```
 
 ## Parts
 
 | Part | Notes |
 |---|---|
-| ESP32-S2 mini (LOLIN) | the bridge; powered from the PC's USB |
+| ESP32-C3 board (e.g. C3 SuperMini) or ESP32-S2 mini | the bridge; powered from the PC's USB |
 | 2 × NPN transistor | 2N3904, BC547 or 2N2222 |
 | 1 × 1 kΩ | Q1 base resistor |
 | 1 × 1 kΩ (½ W is fine) | K-line pull-up to 12 V |
@@ -29,17 +29,19 @@ brought down to 3.3 V, and set `KLINE_INVERTED = false` in the firmware.
 
 ![Wiring diagram](docs/wiring.svg)
 
+Pins: **C3: TX = GPIO4, RX = GPIO5**. S2 mini: TX = GPIO17, RX = GPIO18. The firmware picks them from the chip.
+
 Text version:
 
 ```
 DLC 12V ──|>|── 1k ──┬──────────────── DLC K-line
          1N4148      │
                      ├── C  Q1  E ── GND
-   ESP GPIO17 ── 1k ─┘ B (Q1 base)
+   ESP TX ────── 1k ─┘ B (Q1 base)
                      │
                      └── 47k ── B  Q2  E ── GND
                                B ── 10k ── GND
-                               C ──┬── ESP GPIO18
+                               C ──┬── ESP RX
                                    └── 10k ── 3V3
 DLC GND ── ESP GND
 ```
@@ -66,7 +68,7 @@ Both stages invert, and the firmware turns on the UART's own inversion to undo i
 4. Then `dlc_gui.py` → Connect. Blip the throttle and watch which raw bytes change.
 
 ## Firmware
-Arduino IDE → install the "esp32" boards package → board **LOLIN S2 Mini**, *USB CDC On Boot: Enabled*. Open
+Arduino IDE → install the "esp32" boards package → board **ESP32C3 Dev Module** with *USB CDC On Boot: Enabled* (or **LOLIN S2 Mini**, where that is the default). Open
 `firmware/HondaKLine/HondaKLine.ino` and upload. (If the upload doesn't start, hold button 0, tap RST, and release.)
 Check it in the Serial Monitor at 115200: typing `P` should answer `OK HONDA-KLINE 1`.
 

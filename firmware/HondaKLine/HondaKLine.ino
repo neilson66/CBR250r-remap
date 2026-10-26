@@ -19,10 +19,18 @@
 #include <Arduino.h>
 
 // ---- wiring (see README) ----
-const int PIN_KTX = 17;            // to the TX transistor (base resistor)
-const int PIN_KRX = 18;            // from the RX transistor collector
+#if CONFIG_IDF_TARGET_ESP32C3
+// ESP32-C3 (e.g. "C3 SuperMini"). GPIO18/19 are its USB pins, so use 4/5.
+const int PIN_KTX = 4;             // to the TX transistor (base resistor)
+const int PIN_KRX = 5;             // from the RX transistor collector
+const int PIN_LED = 8;             // on-board LED (lit when low on the SuperMini; just a busy blink here)
+#else
+// ESP32-S2 mini (LOLIN)
+const int PIN_KTX = 17;
+const int PIN_KRX = 18;
+const int PIN_LED = 15;
+#endif
 const bool KLINE_INVERTED = true;  // the two-transistor interface inverts both directions
-const int PIN_LED = 15;            // on-board LED
 
 const uint32_t KLINE_BAUD = 10400;
 const uint32_t WAKE_LOW_MS = 70;

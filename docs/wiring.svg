@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 660" width="960" height="660" font-family="Segoe UI, Arial, sans-serif" font-size="14">
   <rect width="960" height="660" fill="#ffffff"/>
-  <text x="480" y="36" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">Honda DLC ↔ ESP32-S2 mini K-line interface</text>
+  <text x="480" y="36" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">Honda DLC ↔ ESP32 K-line interface</text>
 
   <defs>
     <g id="gnd" stroke="#111" stroke-width="2">
@@ -85,14 +85,16 @@
 
   <!-- ESP32-S2 mini -->
   <rect x="740" y="110" width="140" height="420" rx="8" fill="#e8f0ff" stroke="#1565c0" stroke-width="2"/>
-  <text x="810" y="102" text-anchor="middle" font-weight="bold" fill="#1565c0">ESP32-S2 mini</text>
+  <text x="810" y="102" text-anchor="middle" font-weight="bold" fill="#1565c0">ESP32-C3 / S2 mini</text>
   <g fill="#fff" stroke="#111" stroke-width="2">
     <circle cx="740" cy="150" r="4"/><circle cx="740" cy="270" r="4"/><circle cx="740" cy="440" r="4"/><circle cx="740" cy="500" r="4"/>
   </g>
   <g fill="#111">
     <text x="752" y="155">3V3</text>
-    <text x="752" y="275">GPIO18 (RX)</text>
-    <text x="752" y="445">GPIO17 (TX)</text>
+    <text x="752" y="275">RX: C3 GPIO5</text>
+    <text x="752" y="293" fill="#555">(S2: GPIO18)</text>
+    <text x="752" y="445">TX: C3 GPIO4</text>
+    <text x="752" y="463" fill="#555">(S2: GPIO17)</text>
     <text x="752" y="505">GND</text>
   </g>
   <polyline points="736,500 710,500 710,512" stroke="#111" stroke-width="2.5" fill="none"/>
