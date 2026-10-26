@@ -24,6 +24,12 @@
 const int PIN_KTX = 4;             // to the TX transistor (base resistor)
 const int PIN_KRX = 5;             // from the RX transistor collector
 const int PIN_LED = 8;             // on-board LED (lit when low on the SuperMini; just a busy blink here)
+#elif CONFIG_IDF_TARGET_ESP32C6
+// ESP32-C6 (Waveshare ESP32-C6-LCD-1.47). GPIO12/13 are its USB pins, 9 is BOOT and 4-7 go to the SD card and
+// LCD, so use 2/3 on the top header. Its LED is an RGB pixel, so no busy LED here.
+const int PIN_KTX = 2;
+const int PIN_KRX = 3;
+const int PIN_LED = -1;
 #elif CONFIG_IDF_TARGET_ESP32S3
 // ESP32-S3 (Waveshare ESP32-S3-LCD-1.47, the test board; LCD removed). GPIO1/2 are on the 3V3/GND header and
 // not used by the microSD slot or USB. Its LED is an RGB pixel, so no busy LED here.
