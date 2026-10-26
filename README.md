@@ -73,11 +73,13 @@ battery voltage (the ECU pulls it up). If Y reads 0 V, stop.
 4. Then `dlc_gui.py` → Connect. Blip the throttle and watch which raw bytes change.
 
 ## Using the app
-- **Live** tab: decoded values and the raw bytes (bytes that change are highlighted).
-- **Trend** tab: tick any sensors to plot them together as pens, each on its own scale (or tick Auto-scale). Hover to
+One full-screen page: live values on the left, trend in the middle, raw bytes and messages along the bottom.
+- **Sensors**: big live values; tick any sensors to plot them together as pens, each on its own scale (or tick Auto-scale). Hover to
   read every pen at that moment; drag to pan back, mouse wheel to zoom; **Open log…** replays a saved session.
 - Every connection is logged to `logs/<date_time>/` (`live.csv`, `faults.txt`, `info.txt`). Press **Mark** or the
   space bar when the engine misbehaves; marks show as red lines on the trend.
+- **Clear codes**: saves the current fault codes to the log, sends the community Honda clear command (`72 05 60 03`,
+  not yet confirmed on the MC41) and re-reads the codes. If they don't clear, use the service-manual SCS method.
 
 ## Firmware
 Arduino IDE → install the "esp32" boards package → board **ESP32C3 Dev Module** with *USB CDC On Boot: Enabled* (or **LOLIN S2 Mini**, where that is the default). Open

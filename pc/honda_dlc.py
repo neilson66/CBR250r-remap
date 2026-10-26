@@ -121,6 +121,8 @@ class SimLink:
             if data is None:
                 raise DlcError("ERR TIMEOUT")
             body = bytes([0x02, 5 + len(data), 0x71, table]) + data
+        elif packet[:4] == b"\x72\x05\x60\x03":
+            body = bytes([0x02, 0x04, 0x60])
         elif packet[:2] == b"\x72\x05" and packet[2] in (0x73, 0x74):
             body = bytes([0x02, 5 + 6, packet[2], packet[3]]) + bytes(6)
         else:
@@ -217,6 +219,11 @@ class Ecu:
                 rows.append((i, frame[4:-1]))
             out[name] = rows
         return out
+
+    def clear_faults(self) -> bytes:
+        """Ask the ECU to erase stored fault codes (72 05 60 03, as used by community Honda tools; unverified on
+        the MC41). Writes nothing else. Returns the ECU's reply; re-read the fault tables to confirm."""
+        return self.raw(bytes([0x72, 0x05, 0x60, 0x03]))
 
     @staticmethod
     def fault_codes(rows) -> list[str]:

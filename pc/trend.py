@@ -86,23 +86,32 @@ class TrendView(ttk.Frame):
 
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True)
-        pens = ttk.Frame(body)
-        pens.pack(side="left", fill="y", padx=(0, 6))
+        # Sensor list: live value (big) + cursor value; the tick box puts the sensor on the trend as a pen.
+        pens = ttk.LabelFrame(body, text="Sensors (tick to trend)  —  table 0x11, layout unverified", padding=8)
+        pens.pack(side="left", fill="y", padx=(0, 8))
+        ttk.Label(pens, text="Live", foreground="grey").grid(row=0, column=2, sticky="e")
+        self.cursor_time = ttk.Label(pens, text="Cursor", foreground="grey")
+        self.cursor_time.grid(row=0, column=4, sticky="e")
         self.pen_vars: dict[str, tk.BooleanVar] = {}
+        self.live_values: dict[str, ttk.Label] = {}
         self.pen_values: dict[str, ttk.Label] = {}
         self.colour = {}
-        for i, f in enumerate(TABLE11):
-            self.colour[f.name] = COLOURS[i % len(COLOURS)]
+        style = ttk.Style(self)
+        style.configure("Pen.TCheckbutton", font=("Segoe UI", 12))
+        for i, f in enumerate(TABLE11, start=1):
+            self.colour[f.name] = COLOURS[(i - 1) % len(COLOURS)]
             var = tk.BooleanVar(value=f.name in DEFAULT_PENS)
             self.pen_vars[f.name] = var
-            tk.Label(pens, bg=self.colour[f.name], width=2).grid(row=i, column=0, padx=(0, 4), pady=1)
-            ttk.Checkbutton(pens, text=f.name, variable=var, command=self.touch).grid(row=i, column=1, sticky="w")
-            lbl = ttk.Label(pens, text="—", width=8, anchor="e", font=("Consolas", 10, "bold"))
-            lbl.grid(row=i, column=2, sticky="e")
-            ttk.Label(pens, text=f.unit, foreground="grey").grid(row=i, column=3, sticky="w", padx=(3, 0))
-            self.pen_values[f.name] = lbl
-        self.cursor_time = ttk.Label(pens, text="", foreground="grey")
-        self.cursor_time.grid(row=len(TABLE11), column=0, columnspan=4, sticky="w", pady=(6, 0))
+            tk.Label(pens, bg=self.colour[f.name], width=2, height=1).grid(row=i, column=0, padx=(0, 6), pady=4)
+            ttk.Checkbutton(pens, text=f.name, variable=var, command=self.touch,
+                            style="Pen.TCheckbutton").grid(row=i, column=1, sticky="w")
+            lv = ttk.Label(pens, text="—", width=7, anchor="e", font=("Consolas", 20, "bold"))
+            lv.grid(row=i, column=2, sticky="e", padx=(10, 0))
+            ttk.Label(pens, text=f.unit, foreground="grey", width=5).grid(row=i, column=3, sticky="w", padx=(4, 8))
+            cv = ttk.Label(pens, text="", width=7, anchor="e", font=("Consolas", 12), foreground="#555")
+            cv.grid(row=i, column=4, sticky="e")
+            self.live_values[f.name] = lv
+            self.pen_values[f.name] = cv
 
         self.canvas = tk.Canvas(body, bg="white", highlightthickness=1, highlightbackground="#ccc")
         self.canvas.pack(side="left", fill="both", expand=True)
@@ -118,6 +127,9 @@ class TrendView(ttk.Frame):
     # ---- data in
     def add_sample(self, t, vals: dict, mark: str = ""):
         self.live.add(t, {k: to_float(v[0]) for k, v in vals.items()}, mark)
+        for k, (v, _) in vals.items():
+            if k in self.live_values:
+                self.live_values[k].configure(text="—" if v is None else v)
         if self.log is None:
             self.dirty = True
 
@@ -284,8 +296,8 @@ class TrendView(ttk.Frame):
                 c.create_line(x, y0, x, y1, fill="#e53935", dash=(4, 3))
                 c.create_text(x + 3, y0 + 2, text=m, anchor="nw", fill="#e53935", font=("Segoe UI", 8, "bold"))
 
-        # cursor read-out (or latest values)
-        idx = len(s.t) - 1 if s.t else None
+        # cursor read-out (blank when not hovering; the Live column always shows the latest values)
+        idx = None
         if self.cursor_x is not None and x0 <= self.cursor_x <= x1:
             tc = t0 + (self.cursor_x - x0) * (t1 - t0) / (x1 - x0)
             j = bisect.bisect_left(s.t, tc)
@@ -294,11 +306,11 @@ class TrendView(ttk.Frame):
             c.create_line(x, y0, x, y1, fill="#333")
             self.cursor_time.configure(text=f"at {int(s.t[idx] // 60)}:{s.t[idx] % 60:04.1f}")
         else:
-            self.cursor_time.configure(text="latest")
+            self.cursor_time.configure(text="Cursor")
         for f in TABLE11:
             v = s.data[f.name][idx] if idx is not None else None
-            self.pen_values[f.name].configure(text="—" if v is None else f.fmt.format(v))
-            if idx is not None and v is not None and f.name in scales and self.cursor_x is not None:
+            self.pen_values[f.name].configure(text="" if v is None else f.fmt.format(v))
+            if idx is not None and v is not None and f.name in scales:
                 lo, hi = scales[f.name]
                 y = y1 - (min(max(v, lo), hi) - lo) * (y1 - y0) / (hi - lo)
                 c.create_oval(tx(s.t[idx]) - 3, y - 3, tx(s.t[idx]) + 3, y + 3, fill=self.colour[f.name], outline="")

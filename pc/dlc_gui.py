@@ -104,39 +104,32 @@ class App:
         self.btn_mark.pack(side="left", padx=4)
         self.btn_dtc = ttk.Button(top, text="Fault codes", command=lambda: self.jobs.put("dtc"), state="disabled")
         self.btn_dtc.pack(side="left", padx=4)
+        self.btn_clear = ttk.Button(top, text="Clear codes", command=self.ask_clear, state="disabled")
+        self.btn_clear.pack(side="left", padx=4)
         self.btn_dump = ttk.Button(top, text="Dump tables", command=lambda: self.jobs.put("dump"), state="disabled")
         self.btn_dump.pack(side="left", padx=4)
         self.status = ttk.Label(top, text="not connected", foreground="grey")
         self.status.pack(side="left", padx=10)
 
-        tabs = ttk.Notebook(root)
-        tabs.pack(fill="both", expand=True, padx=6)
-        mid = ttk.Frame(tabs, padding=6)
-        tabs.add(mid, text="Live")
-        self.trend = TrendView(tabs)
-        self.trend.configure(padding=6)
-        tabs.add(self.trend, text="Trend")
-        vals = ttk.LabelFrame(mid, text="Live data (table 0x11, layout unverified)", padding=6)
-        vals.pack(side="left", fill="y")
-        self.val_labels = {}
-        for r, f in enumerate(TABLE11):
-            ttk.Label(vals, text=f.name).grid(row=r, column=0, sticky="w")
-            lbl = ttk.Label(vals, text="—", width=9, anchor="e", font=("Consolas", 12, "bold"))
-            lbl.grid(row=r, column=1, sticky="e")
-            ttk.Label(vals, text=f.unit).grid(row=r, column=2, sticky="w", padx=4)
-            self.val_labels[f.name] = lbl
-
-        rawf = ttk.LabelFrame(mid, text="Raw bytes (changed bytes highlighted)", padding=6)
-        rawf.pack(side="left", fill="both", expand=True, padx=(6, 0))
+        # One page: sensors + trend fill the middle, raw bytes and messages along the bottom.
+        bottom = ttk.Frame(root, padding=(6, 0, 6, 6))
+        bottom.pack(side="bottom", fill="x")
+        rawf = ttk.LabelFrame(bottom, text="Raw bytes, table 0x11 (changed bytes highlighted)", padding=6)
+        rawf.pack(side="left", fill="y")
         self.raw_cells = []
         for i in range(32):
-            ttk.Label(rawf, text=f"{i:02d}", foreground="grey").grid(row=(i // 8) * 2, column=i % 8)
-            c = tk.Label(rawf, text="--", width=4, font=("Consolas", 12), relief="groove")
-            c.grid(row=(i // 8) * 2 + 1, column=i % 8, padx=1, pady=(0, 4))
+            ttk.Label(rawf, text=f"{i:02d}", foreground="grey").grid(row=(i // 16) * 2, column=i % 16)
+            c = tk.Label(rawf, text="--", width=3, font=("Consolas", 12), relief="groove")
+            c.grid(row=(i // 16) * 2 + 1, column=i % 16, padx=1, pady=(0, 4))
             self.raw_cells.append(c)
+        msgf = ttk.LabelFrame(bottom, text="Messages", padding=4)
+        msgf.pack(side="left", fill="both", expand=True, padx=(8, 0))
+        self.text = tk.Text(msgf, height=7, font=("Consolas", 10))
+        self.text.pack(fill="both", expand=True)
 
-        self.text = tk.Text(root, height=8, font=("Consolas", 10))
-        self.text.pack(fill="both", expand=True, padx=6, pady=6)
+        self.trend = TrendView(root)
+        self.trend.configure(padding=6)
+        self.trend.pack(fill="both", expand=True)
 
         root.bind("<space>", lambda e: self.mark())
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -157,6 +150,17 @@ class App:
         self.running = True
         threading.Thread(target=self.worker, args=(port,), daemon=True).start()
 
+    def ask_clear(self):
+        from tkinter import messagebox
+        if messagebox.askyesno(
+                "Clear fault codes",
+                "Erase the fault codes stored in the ECU?\n\n"
+                "The current codes are read and saved to this session's faults.txt first. "
+                "Engine off, key on is best.\n\n"
+                "This uses the community Honda clear command, not yet confirmed on the CBR250R; "
+                "the codes are re-read afterwards to show whether it worked."):
+            self.jobs.put("clear")
+
     def mark(self):
         if not self.running:
             return
@@ -174,7 +178,7 @@ class App:
                     text, colour = payload
                     self.status.configure(text=text, foreground=colour)
                     state = "normal" if colour == "green" else "disabled"
-                    for b in (self.btn_mark, self.btn_dtc, self.btn_dump):
+                    for b in (self.btn_mark, self.btn_dtc, self.btn_clear, self.btn_dump):
                         b.configure(state=state)
                     if colour == "grey":
                         self.btn_connect.configure(text="Connect")
@@ -186,8 +190,6 @@ class App:
 
     def show_live(self, raw, vals, elapsed, mark):
         self.trend.add_sample(elapsed, vals, mark)
-        for name, (v, _) in vals.items():
-            self.val_labels[name].configure(text=v if v is not None else "—")
         for i, c in enumerate(self.raw_cells):
             if i < len(raw):
                 changed = i < len(self.prev_raw) and raw[i] != self.prev_raw[i]
@@ -221,6 +223,8 @@ class App:
                 try:
                     if job == "dtc":
                         self.do_dtc()
+                    elif job == "clear":
+                        self.do_clear()
                     elif job == "dump":
                         self.do_dump()
                     raw, vals = self.ecu.live()
@@ -286,6 +290,21 @@ class App:
         if self.session:
             self.session.faults("\n".join(lines))
 
+    def do_clear(self):
+        put = self.q.put
+        put(("msg", "saving the current fault codes before clearing…"))
+        self.do_dtc()
+        try:
+            reply = self.ecu.clear_faults()
+            put(("msg", f"clear command sent, ECU replied {hexs(reply)}"))
+            self.session.faults(f"CLEAR sent, reply {hexs(reply)}")
+        except DlcError as e:
+            put(("msg", f"clear command: no valid reply ({e}). Codes may not be cleared; re-reading…"))
+            self.session.faults(f"CLEAR sent, no valid reply ({e})")
+        time.sleep(0.5)
+        put(("msg", "fault codes after clearing:"))
+        self.do_dtc()
+
     def do_dump(self):
         put = self.q.put
         put(("msg", "dumping tables 00-FF (about a minute)…"))
@@ -304,5 +323,11 @@ class App:
 
 if __name__ == "__main__":
     root = tk.Tk()
+    root.geometry("1920x1080")
+    root.minsize(1280, 760)
+    try:
+        root.state("zoomed")  # maximised on Windows
+    except tk.TclError:
+        pass
     App(root)
     root.mainloop()
