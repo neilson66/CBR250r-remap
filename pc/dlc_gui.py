@@ -1,6 +1,13 @@
-"""Honda DLC scanner window: live data, raw bytes, CSV logging, fault codes, table dump.
+"""Honda DLC scanner window: live data, raw bytes, automatic session logging, marks, fault codes, table dump.
 
     python dlc_gui.py            (pick the ESP32's COM port, or "demo")
+
+Every connection writes a session folder logs/<date_time>/ with:
+  info.txt    port, init reply, which extra tables answered and their first values
+  faults.txt  fault-code tables read at connect (and again whenever "Fault codes" is pressed)
+  live.csv    ~10 rows/s: decoded table 0x11, its raw bytes, any marks, and every ~1 s the raw extra tables
+  dump.json   if "Dump tables" was pressed
+Press "Mark" (or the space bar) the moment the engine stumbles, so the moment can be found in the log.
 """
 
 from __future__ import annotations
@@ -11,9 +18,16 @@ import queue
 import threading
 import time
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 
 from honda_dlc import TABLE11, DlcError, Ecu, hexs, open_link
+
+LOG_ROOT = Path(__file__).resolve().parent.parent / "logs"
+# Tables other than 0x11 that may hold O2 sensor, fuel trim and status flags on Honda ECUs. The ones that answer
+# are logged raw about once a second so they can be decoded later.
+EXTRA_CANDIDATES = [0x10, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x20, 0x21, 0x60, 0x61, 0xD0, 0xD1]
+EXTRA_EVERY = 10  # read the extra tables every N live samples
 
 
 def list_ports():
@@ -24,17 +38,57 @@ def list_ports():
         return ["demo"]
 
 
+class Session:
+    """One connection's log folder."""
+
+    def __init__(self, port: str, init_reply: bytes):
+        self.dir = LOG_ROOT / time.strftime("%Y%m%d_%H%M%S")
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.t0 = time.time()
+        self.extras: list[int] = []
+        self.csv_file = None
+        self.writer = None
+        self.info(f"port {port}\ninit reply {hexs(init_reply)}\nstarted {time.ctime(self.t0)}\n")
+
+    def info(self, text: str):
+        with open(self.dir / "info.txt", "a", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def faults(self, text: str):
+        with open(self.dir / "faults.txt", "a", encoding="utf-8") as fh:
+            fh.write(f"--- {time.strftime('%H:%M:%S')}\n{text}\n")
+
+    def start_csv(self):
+        self.csv_file = open(self.dir / "live.csv", "w", newline="", encoding="utf-8-sig")
+        self.writer = csv.writer(self.csv_file)
+        self.writer.writerow(["time", "elapsed_s", "mark"] + [f"{f.name} ({f.unit})" for f in TABLE11]
+                             + ["raw_11"] + [f"raw_{t:02X}" for t in self.extras])
+
+    def row(self, mark: str, vals: dict, raw11: bytes, extra: dict):
+        now = time.time()
+        self.writer.writerow([time.strftime("%H:%M:%S", time.localtime(now)) + f".{int(now * 10) % 10}",
+                              f"{now - self.t0:.1f}", mark]
+                             + [vals[f.name][0] for f in TABLE11] + [hexs(raw11)]
+                             + [hexs(extra[t]) if t in extra else "" for t in self.extras])
+
+    def close(self):
+        if self.csv_file:
+            self.csv_file.close()
+            self.csv_file = None
+
+
 class App:
     def __init__(self, root: tk.Tk):
         self.root = root
         root.title("Honda DLC Scanner")
         self.q: queue.Queue = queue.Queue()
         self.jobs: queue.Queue = queue.Queue()
+        self.marks: queue.Queue = queue.Queue()
+        self.mark_count = 0
         self.ecu = None
         self.link = None
+        self.session: Session | None = None
         self.running = False
-        self.log_writer = None
-        self.log_file = None
         self.prev_raw = b""
 
         top = ttk.Frame(root, padding=6)
@@ -47,8 +101,8 @@ class App:
         ttk.Button(top, text="↻", width=3, command=lambda: self.port.configure(values=list_ports())).pack(side="left")
         self.btn_connect = ttk.Button(top, text="Connect", command=self.connect)
         self.btn_connect.pack(side="left", padx=4)
-        self.btn_log = ttk.Button(top, text="Start log", command=self.toggle_log, state="disabled")
-        self.btn_log.pack(side="left", padx=4)
+        self.btn_mark = ttk.Button(top, text="Mark (space)", command=self.mark, state="disabled")
+        self.btn_mark.pack(side="left", padx=4)
         self.btn_dtc = ttk.Button(top, text="Fault codes", command=lambda: self.jobs.put("dtc"), state="disabled")
         self.btn_dtc.pack(side="left", padx=4)
         self.btn_dump = ttk.Button(top, text="Dump tables", command=lambda: self.jobs.put("dump"), state="disabled")
@@ -80,6 +134,7 @@ class App:
         self.text = tk.Text(root, height=12, font=("Consolas", 10))
         self.text.pack(fill="both", expand=True, padx=6, pady=6)
 
+        root.bind("<space>", lambda e: self.mark())
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.after(50, self.pump)
 
@@ -97,18 +152,12 @@ class App:
         self.running = True
         threading.Thread(target=self.worker, args=(port,), daemon=True).start()
 
-    def toggle_log(self):
-        if self.log_writer:
-            self.log_file.close()
-            self.log_writer = self.log_file = None
-            self.btn_log.configure(text="Start log")
+    def mark(self):
+        if not self.running:
             return
-        name = time.strftime("live_%Y%m%d_%H%M%S.csv")
-        self.log_file = open(name, "w", newline="", encoding="utf-8")
-        self.log_writer = csv.writer(self.log_file)
-        self.log_writer.writerow(["time"] + [f"{f.name} ({f.unit})" for f in TABLE11] + ["raw"])
-        self.btn_log.configure(text="Stop log")
-        self.say(f"logging to {name}")
+        self.mark_count += 1
+        self.marks.put(f"M{self.mark_count}")
+        self.say(f"mark M{self.mark_count} at {time.strftime('%H:%M:%S')}")
 
     def pump(self):
         try:
@@ -120,9 +169,9 @@ class App:
                     text, colour = payload
                     self.status.configure(text=text, foreground=colour)
                     state = "normal" if colour == "green" else "disabled"
-                    for b in (self.btn_log, self.btn_dtc, self.btn_dump):
+                    for b in (self.btn_mark, self.btn_dtc, self.btn_dump):
                         b.configure(state=state)
-                    if colour != "green":
+                    if colour == "grey":
                         self.btn_connect.configure(text="Connect")
                 elif kind == "live":
                     self.show_live(*payload)
@@ -140,19 +189,24 @@ class App:
             else:
                 c.configure(text="--", bg="#eeeeee")
         self.prev_raw = raw
-        if self.log_writer:
-            self.log_writer.writerow([f"{time.time():.2f}"] + [vals[f.name][0] for f in TABLE11] + [hexs(raw)])
 
-    # ---- worker thread (all K-line traffic happens here)
+    # ---- worker thread (all K-line traffic and log writing happen here)
     def worker(self, port):
         put = self.q.put
         try:
             put(("status", ("connecting…", "orange")))
             self.link = open_link(port)
             self.ecu = Ecu(self.link)
-            put(("msg", "init reply: " + hexs(self.ecu.connect())))
-            put(("status", (f"connected ({port})", "green")))
+            init = self.ecu.connect()
+            put(("msg", "init reply: " + hexs(init)))
+            self.session = s = Session(port, init)
+            put(("msg", f"logging to {s.dir}"))
+            self.do_dtc()
+            self.probe_extras()
+            s.start_csv()
+            put(("status", (f"connected ({port}) — logging", "green")))
             errors = 0
+            n = 0
             while self.running:
                 try:
                     job = self.jobs.get_nowait()
@@ -164,32 +218,67 @@ class App:
                     elif job == "dump":
                         self.do_dump()
                     raw, vals = self.ecu.live()
+                    extra = {}
+                    if n % EXTRA_EVERY == 0:
+                        for t in s.extras:
+                            try:
+                                extra[t] = self.ecu.read_table(t)
+                            except DlcError:
+                                pass
+                    marks = []
+                    while not self.marks.empty():
+                        marks.append(self.marks.get_nowait())
+                    s.row(" ".join(marks), vals, raw, extra)
                     put(("live", (raw, vals)))
+                    n += 1
                     errors = 0
                 except DlcError as e:
                     errors += 1
                     put(("msg", f"error: {e}"))
                     if errors >= 5:
                         put(("msg", "lost the ECU, re-initialising"))
+                        s.info(f"{time.strftime('%H:%M:%S')} lost the ECU, re-initialising\n")
                         self.ecu.connect()
                         errors = 0
                 time.sleep(0.05)
         except Exception as e:  # noqa: BLE001 - show anything to the user
             put(("msg", f"connection failed: {e}"))
         finally:
+            if self.session:
+                self.session.close()
+                put(("msg", f"log saved in {self.session.dir}"))
+                self.session = None
             if self.link:
                 self.link.close()
                 self.link = None
             put(("status", ("not connected", "grey")))
             self.running = False
 
+    def probe_extras(self):
+        s = self.session
+        lines = []
+        for t in EXTRA_CANDIDATES:
+            try:
+                d = self.ecu.read_table(t)
+            except DlcError:
+                continue
+            s.extras.append(t)
+            lines.append(f"table {t:02X} ({len(d)}): {hexs(d)}")
+        s.info("extra tables:\n" + ("\n".join(lines) or "none") + "\n")
+        self.q.put(("msg", "extra tables logged: " + (", ".join(f"{t:02X}" for t in s.extras) or "none")))
+
     def do_dtc(self):
         put = self.q.put
         tables = self.ecu.fault_tables()
+        lines = []
         for name, rows in tables.items():
             for i, payload in rows:
-                put(("msg", f"{name} {i:02X}: {hexs(payload)}"))
-            put(("msg", f"{name} fault codes (best guess): {', '.join(Ecu.fault_codes(rows)) or 'none'}"))
+                lines.append(f"{name} {i:02X}: {hexs(payload)}")
+            lines.append(f"{name} fault codes (best guess): {', '.join(Ecu.fault_codes(rows)) or 'none'}")
+        for line in lines:
+            put(("msg", line))
+        if self.session:
+            self.session.faults("\n".join(lines))
 
     def do_dump(self):
         put = self.q.put
@@ -197,16 +286,14 @@ class App:
         found = self.ecu.dump()
         for t, d in found.items():
             put(("msg", f"table {t:02X} ({len(d)}): {hexs(d)}"))
-        name = time.strftime("dump_%Y%m%d_%H%M%S.json")
-        with open(name, "w") as fh:
+        path = self.session.dir / "dump.json"
+        with open(path, "w") as fh:
             json.dump({f"{t:02X}": hexs(d) for t, d in found.items()}, fh, indent=1)
-        put(("msg", f"saved {name}"))
+        put(("msg", f"saved {path}"))
 
     def close(self):
         self.running = False
-        if self.log_file:
-            self.log_file.close()
-        self.root.after(200, self.root.destroy)
+        self.root.after(300, self.root.destroy)
 
 
 if __name__ == "__main__":
