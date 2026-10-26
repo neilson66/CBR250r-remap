@@ -22,8 +22,7 @@ from pathlib import Path
 from tkinter import ttk
 
 from honda_dlc import TABLE11, DlcError, Ecu, hexs, open_link
-
-LOG_ROOT = Path(__file__).resolve().parent.parent / "logs"
+from trend import LOG_ROOT, TrendView
 # Tables other than 0x11 that may hold O2 sensor, fuel trim and status flags on Honda ECUs. The ones that answer
 # are logged raw about once a second so they can be decoded later.
 EXTRA_CANDIDATES = [0x10, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x20, 0x21, 0x60, 0x61, 0xD0, 0xD1]
@@ -110,8 +109,13 @@ class App:
         self.status = ttk.Label(top, text="not connected", foreground="grey")
         self.status.pack(side="left", padx=10)
 
-        mid = ttk.Frame(root, padding=6)
-        mid.pack(fill="both", expand=True)
+        tabs = ttk.Notebook(root)
+        tabs.pack(fill="both", expand=True, padx=6)
+        mid = ttk.Frame(tabs, padding=6)
+        tabs.add(mid, text="Live")
+        self.trend = TrendView(tabs)
+        self.trend.configure(padding=6)
+        tabs.add(self.trend, text="Trend")
         vals = ttk.LabelFrame(mid, text="Live data (table 0x11, layout unverified)", padding=6)
         vals.pack(side="left", fill="y")
         self.val_labels = {}
@@ -131,7 +135,7 @@ class App:
             c.grid(row=(i // 8) * 2 + 1, column=i % 8, padx=1, pady=(0, 4))
             self.raw_cells.append(c)
 
-        self.text = tk.Text(root, height=12, font=("Consolas", 10))
+        self.text = tk.Text(root, height=8, font=("Consolas", 10))
         self.text.pack(fill="both", expand=True, padx=6, pady=6)
 
         root.bind("<space>", lambda e: self.mark())
@@ -149,6 +153,7 @@ class App:
             return
         port = self.port.get()
         self.btn_connect.configure(text="Disconnect")
+        self.trend.clear_live()
         self.running = True
         threading.Thread(target=self.worker, args=(port,), daemon=True).start()
 
@@ -179,7 +184,8 @@ class App:
             pass
         self.root.after(50, self.pump)
 
-    def show_live(self, raw, vals):
+    def show_live(self, raw, vals, elapsed, mark):
+        self.trend.add_sample(elapsed, vals, mark)
         for name, (v, _) in vals.items():
             self.val_labels[name].configure(text=v if v is not None else "—")
         for i, c in enumerate(self.raw_cells):
@@ -229,7 +235,7 @@ class App:
                     while not self.marks.empty():
                         marks.append(self.marks.get_nowait())
                     s.row(" ".join(marks), vals, raw, extra)
-                    put(("live", (raw, vals)))
+                    put(("live", (raw, vals, time.time() - s.t0, " ".join(marks))))
                     n += 1
                     errors = 0
                 except DlcError as e:
