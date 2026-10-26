@@ -27,6 +27,10 @@ brought down to 3.3 V, and set `KLINE_INVERTED = false` in the firmware.
 
 ## Wiring
 
+![Wiring diagram](docs/wiring.svg)
+
+Text version:
+
 ```
 DLC 12V ──|>|── 1k ──┬──────────────── DLC K-line
          1N4148      │

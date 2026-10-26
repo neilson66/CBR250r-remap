@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 660" width="960" height="660" font-family="Segoe UI, Arial, sans-serif" font-size="14">
+  <rect width="960" height="660" fill="#ffffff"/>
+  <text x="480" y="36" text-anchor="middle" font-size="20" font-weight="bold" fill="#111">Honda DLC ↔ ESP32-S2 mini K-line interface</text>
+
+  <defs>
+    <g id="gnd" stroke="#111" stroke-width="2">
+      <line x1="-12" y1="0" x2="12" y2="0"/><line x1="-8" y1="5" x2="8" y2="5"/><line x1="-4" y1="10" x2="4" y2="10"/>
+    </g>
+  </defs>
+
+  <!-- Bike DLC -->
+  <rect x="30" y="70" width="120" height="320" rx="8" fill="#ffe9e9" stroke="#b33" stroke-width="2"/>
+  <text x="90" y="62" text-anchor="middle" font-weight="bold" fill="#b33">Bike DLC (red 4-pin)</text>
+  <g text-anchor="end" fill="#111">
+    <text x="140" y="115">12V (key on)</text>
+    <text x="140" y="205">K-LINE</text>
+    <text x="140" y="295">GND</text>
+    <text x="140" y="355">SCS</text>
+  </g>
+  <g fill="#fff" stroke="#111" stroke-width="2">
+    <circle cx="150" cy="110" r="4"/><circle cx="150" cy="200" r="4"/><circle cx="150" cy="290" r="4"/><circle cx="150" cy="350" r="4"/>
+  </g>
+  <text x="165" y="355" fill="#888">not connected</text>
+
+  <!-- 12V feed: D1 + R1 pull-up -->
+  <g stroke="#d22" stroke-width="3" fill="none">
+    <polyline points="154,110 180,110"/>
+    <polyline points="204,110 250,110"/>
+    <polyline points="310,110 390,110 390,200"/>
+  </g>
+  <polygon points="180,98 180,122 204,110" fill="#d22"/>
+  <line x1="204" y1="98" x2="204" y2="122" stroke="#d22" stroke-width="3"/>
+  <text x="192" y="90" text-anchor="middle">D1 1N4148</text>
+  <rect x="250" y="102" width="60" height="16" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="280" y="92" text-anchor="middle">R1 1k</text>
+
+  <!-- K-line bus -->
+  <polyline points="154,200 480,200 480,220" stroke="#e88a00" stroke-width="3" fill="none"/>
+  <text x="235" y="192" text-anchor="middle" fill="#e88a00" font-weight="bold">K-line</text>
+  <g fill="#111"><circle cx="330" cy="200" r="5"/><circle cx="390" cy="200" r="5"/></g>
+
+  <!-- Q1 (TX): ESP pulls K-line low -->
+  <polyline points="330,200 330,410 350,428" stroke="#111" stroke-width="2.5" fill="none"/>
+  <line x1="350" y1="416" x2="350" y2="464" stroke="#111" stroke-width="4"/>
+  <polyline points="350,452 330,470 330,490" stroke="#111" stroke-width="2.5" fill="none"/>
+  <polygon points="332,468 340.7,465.9 335.3,460" fill="#111"/>
+  <circle cx="342" cy="440" r="28" fill="none" stroke="#111" stroke-width="1.5"/>
+  <use href="#gnd" x="330" y="490"/>
+  <text x="305" y="436" text-anchor="end" font-weight="bold">Q1 (TX)</text>
+  <text x="305" y="454" text-anchor="end" fill="#555">2N3904</text>
+  <polyline points="350,440 600,440" stroke="#1565c0" stroke-width="3" fill="none"/>
+  <rect x="600" y="432" width="60" height="16" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="630" y="424" text-anchor="middle">R2 1k</text>
+  <polyline points="660,440 740,440" stroke="#1565c0" stroke-width="3" fill="none"/>
+
+  <!-- Q2 (RX): K-line level into the ESP -->
+  <rect x="472" y="220" width="16" height="60" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="465" y="255" text-anchor="end">R3 47k</text>
+  <polyline points="480,280 480,340" stroke="#111" stroke-width="2.5" fill="none"/>
+  <rect x="472" y="340" width="16" height="44" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="465" y="367" text-anchor="end">R4 10k</text>
+  <line x1="480" y1="384" x2="480" y2="396" stroke="#111" stroke-width="2.5"/>
+  <use href="#gnd" x="480" y="396"/>
+  <circle cx="480" cy="330" r="5" fill="#111"/>
+  <polyline points="480,330 520,330" stroke="#111" stroke-width="2.5" fill="none"/>
+  <line x1="520" y1="306" x2="520" y2="354" stroke="#111" stroke-width="4"/>
+  <polyline points="520,318 540,300 540,270" stroke="#111" stroke-width="2.5" fill="none"/>
+  <polyline points="520,342 540,360 540,396" stroke="#111" stroke-width="2.5" fill="none"/>
+  <polygon points="537,357 528.4,354.6 533.8,348.6" fill="#111"/>
+  <circle cx="528" cy="330" r="28" fill="none" stroke="#111" stroke-width="1.5"/>
+  <use href="#gnd" x="540" y="396"/>
+  <text x="565" y="326" font-weight="bold">Q2 (RX)</text>
+  <text x="565" y="344" fill="#555">2N3904</text>
+
+  <circle cx="540" cy="270" r="5" fill="#111"/>
+  <polyline points="540,270 740,270" stroke="#2e7d32" stroke-width="3" fill="none"/>
+  <polyline points="540,270 540,240" stroke="#2e7d32" stroke-width="3" fill="none"/>
+  <rect x="532" y="180" width="16" height="60" fill="#fff" stroke="#111" stroke-width="2"/>
+  <text x="556" y="215">R5 10k</text>
+  <polyline points="540,180 540,150 740,150" stroke="#7b1fa2" stroke-width="3" fill="none"/>
+
+  <!-- DLC ground -->
+  <polyline points="154,290 180,290 180,302" stroke="#111" stroke-width="2.5" fill="none"/>
+  <use href="#gnd" x="180" y="302"/>
+
+  <!-- ESP32-S2 mini -->
+  <rect x="740" y="110" width="140" height="420" rx="8" fill="#e8f0ff" stroke="#1565c0" stroke-width="2"/>
+  <text x="810" y="102" text-anchor="middle" font-weight="bold" fill="#1565c0">ESP32-S2 mini</text>
+  <g fill="#fff" stroke="#111" stroke-width="2">
+    <circle cx="740" cy="150" r="4"/><circle cx="740" cy="270" r="4"/><circle cx="740" cy="440" r="4"/><circle cx="740" cy="500" r="4"/>
+  </g>
+  <g fill="#111">
+    <text x="752" y="155">3V3</text>
+    <text x="752" y="275">GPIO18 (RX)</text>
+    <text x="752" y="445">GPIO17 (TX)</text>
+    <text x="752" y="505">GND</text>
+  </g>
+  <polyline points="736,500 710,500 710,512" stroke="#111" stroke-width="2.5" fill="none"/>
+  <use href="#gnd" x="710" y="512"/>
+  <text x="810" y="552" text-anchor="middle" fill="#1565c0">USB-C → laptop (powers the board)</text>
+
+  <!-- Notes -->
+  <rect x="30" y="572" width="900" height="76" rx="6" fill="#f6f6f6" stroke="#ccc"/>
+  <g fill="#222" font-size="13.5">
+    <text x="44" y="594">• All ground symbols are joined together: wire the DLC GND to the ESP32 GND. The bike's 12 V only feeds R1 and never goes to the ESP32.</text>
+    <text x="44" y="614">• Transistor legs, flat face towards you, legs down: 2N3904 / PN2222A = E B C (left to right). BC547 = C B E.</text>
+    <text x="44" y="634">• Check the DLC pins with a multimeter before connecting. Any NPN of these types works for both Q1 and Q2.</text>
+  </g>
+</svg>
