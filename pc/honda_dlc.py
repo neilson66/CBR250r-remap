@@ -54,8 +54,18 @@ class SerialLink:
         import serial  # pyserial
         self.ser = serial.Serial(port, 115200, timeout=timeout)
         time.sleep(0.3)
+        # Flush any half-typed line or boot text on the board, then ping (a couple of tries after a reset).
+        self.ser.write(b"\n")
+        time.sleep(0.2)
         self.ser.reset_input_buffer()
-        reply = self._cmd("P")
+        reply = ""
+        for _ in range(3):
+            try:
+                reply = self._cmd("P")
+            except DlcError:
+                continue
+            if reply.startswith("OK HONDA-KLINE"):
+                break
         if not reply.startswith("OK HONDA-KLINE"):
             raise DlcError(f"no bridge on {port} (got {reply!r})")
 
@@ -256,6 +266,8 @@ def open_link(port: str):
 CHECK_HELP = {
     "level": "K-line reads LOW at idle. Is 12 V on the pull-up (key on / bench supply)? Is Q1 always on "
              "(GPIO17 wiring, transistor legs) or the K-line shorted to GND? Check D1 points the right way.",
+    "hold": "Holding the K-line low wasn't seen. If a multimeter on the K-line reads ~0 V now, the receive side "
+            "(R3/R4/Q2/R5, RX pin) is at fault; if it still reads ~12 V, the send side (TX pin, R2, Q1) is.",
     "echo": "Bytes didn't come back. Check GPIO18 / Q2 / R3 / R4 / R5 and that GPIO17 reaches Q1 through R2. "
             "Transistor legs: 2N3904 is E-B-C with the flat face towards you.",
     "init": "Interface works but the ECU didn't answer. Key on, kill switch at RUN, side stand up. Is the "
@@ -268,21 +280,25 @@ def check(port: str) -> int:
     link = SerialLink(port)
     print("1. bridge on", port, "... OK")
     steps = [("level", "L", "OK LEVEL HIGH", "2. K-line idles high"),
-             ("echo", "E", "OK ECHO", "3. send/receive echo"),
-             ("init", "W", "OK 02 04 00 FA", "4. ECU wake-up and init")]
+             ("hold", "D 0;L", "OK LEVEL LOW", "3. pulling the K-line low is seen"),
+             ("echo", "E", "OK ECHO", "4. send/receive echo"),
+             ("init", "W", "OK 02 04 00 FA", "5. ECU wake-up and init")]
     try:
         for key, cmd, want, label in steps:
-            reply = link._cmd(cmd)
+            replies = [link._cmd(c) for c in cmd.split(";")]
+            reply = replies[-1]
+            if key == "hold":
+                link._cmd("D 1")
             if reply != want:
                 print(f"{label} ... FAILED ({reply})")
                 print("   ", CHECK_HELP[key])
                 if key == "init":
-                    print("    (Steps 1-3 passed, so the hardware is fine; on the bench without the ECU this is expected.)")
+                    print("    (Steps 1-4 passed, so the hardware is fine; on the bench without the ECU this is expected.)")
                 return 1
             print(f"{label} ... OK")
         ecu = Ecu(link)
         data = ecu.read_table(0x11)
-        print("5. table 0x11 ...", hexs(data))
+        print("6. table 0x11 ...", hexs(data))
         print("It's talking. Run 'live', 'dtc' or 'dump', or open dlc_gui.py.")
         return 0
     finally:

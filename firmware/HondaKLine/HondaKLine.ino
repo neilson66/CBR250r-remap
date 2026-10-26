@@ -24,6 +24,12 @@
 const int PIN_KTX = 4;             // to the TX transistor (base resistor)
 const int PIN_KRX = 5;             // from the RX transistor collector
 const int PIN_LED = 8;             // on-board LED (lit when low on the SuperMini; just a busy blink here)
+#elif CONFIG_IDF_TARGET_ESP32S3
+// ESP32-S3 (Waveshare ESP32-S3-LCD-1.47, the test board; LCD removed). GPIO1/2 are on the 3V3/GND header and
+// not used by the microSD slot or USB. Its LED is an RGB pixel, so no busy LED here.
+const int PIN_KTX = 1;
+const int PIN_KRX = 2;
+const int PIN_LED = -1;
 #else
 // ESP32-S2 mini (LOLIN)
 const int PIN_KTX = 17;
@@ -194,8 +200,8 @@ static void handleLine(String line) {
   char cmd = toupper(line[0]);
   String rest = line.substring(1);
   rest.trim();
-  digitalWrite(PIN_LED, HIGH);
-  if (held && cmd != 'D') release();
+  if (PIN_LED >= 0) digitalWrite(PIN_LED, HIGH);
+  if (held && cmd != 'D' && cmd != 'L') release();  // L may read the line while D 0 holds it low
 
   if (cmd == 'D') {
     if (rest == "0") { driveLine(true); held = true; Serial.println("OK HOLDING LOW"); }
@@ -205,7 +211,12 @@ static void handleLine(String line) {
     pinMode(PIN_KRX, INPUT);
     delay(2);
     bool pinHigh = digitalRead(PIN_KRX);
-    klineBegin();
+    if (held) {
+      pinMode(PIN_KTX, OUTPUT);  // K.end() released the TX pin; keep holding the line low
+      digitalWrite(PIN_KTX, KLINE_INVERTED ? HIGH : LOW);
+    } else {
+      klineBegin();
+    }
     bool lineHigh = KLINE_INVERTED ? !pinHigh : pinHigh;
     Serial.println(lineHigh ? "OK LEVEL HIGH" : "OK LEVEL LOW");
   } else if (cmd == 'E') {
@@ -236,11 +247,11 @@ static void handleLine(String line) {
   } else {
     Serial.println("ERR UNKNOWN_COMMAND");
   }
-  digitalWrite(PIN_LED, LOW);
+  if (PIN_LED >= 0) digitalWrite(PIN_LED, LOW);
 }
 
 void setup() {
-  pinMode(PIN_LED, OUTPUT);
+  if (PIN_LED >= 0) pinMode(PIN_LED, OUTPUT);
   Serial.begin(115200);
   klineBegin();
 }
