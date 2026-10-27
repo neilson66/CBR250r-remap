@@ -237,10 +237,12 @@ class Ecu:
 
     @staticmethod
     def fault_codes(rows) -> list[str]:
-        """Best guess: non-zero bytes in pairs are Honda 'main-sub' codes (e.g. 7-1 = coolant sensor)."""
+        """Honda 'main-sub' codes (e.g. 7-1 = coolant sensor): byte 0 of each row is skipped (meaning unknown), then
+        (main, sub) pairs. Seen on the MC41: past rows 01 01 02 08 01 09 02 = 1-2, 8-1, 9-2 and 00 0C 01 36 01 36 02
+        = 12-1, 54-1, 54-2."""
         codes = []
         for _, payload in rows:
-            for j in range(0, len(payload) - 1, 2):
+            for j in range(1, len(payload) - 1, 2):
                 if payload[j]:
                     codes.append(f"{payload[j]}-{payload[j + 1]}")
         return codes
@@ -264,12 +266,13 @@ def open_link(port: str):
 
 
 CHECK_HELP = {
-    "level": "K-line reads LOW at idle. Is 12 V on the pull-up (key on / bench supply)? Is Q1 always on "
-             "(GPIO17 wiring, transistor legs) or the K-line shorted to GND? Check D1 points the right way.",
+    "level": "K-line reads LOW at idle. Is 12 V on the pull-up (key on, kill switch RUN / bench supply)? Is Q1 "
+             "always on (TX pin wiring, transistor legs) or the K-line shorted to GND? Check D1 points the right "
+             "way. Pins: C6 TX 2 / RX 3, S3 TX 1 / RX 2, C3 TX 4 / RX 5.",
     "hold": "Holding the K-line low wasn't seen. If a multimeter on the K-line reads ~0 V now, the receive side "
             "(R3/R4/Q2/R5, RX pin) is at fault; if it still reads ~12 V, the send side (TX pin, R2, Q1) is.",
-    "echo": "Bytes didn't come back. Check GPIO18 / Q2 / R3 / R4 / R5 and that GPIO17 reaches Q1 through R2. "
-            "Transistor legs: 2N3904 is E-B-C with the flat face towards you.",
+    "echo": "Bytes didn't come back. Check the RX pin / Q2 / R3 / R4 / R5 and that the TX pin reaches Q1 through "
+            "R2. Transistor legs: 2N3904 is E-B-C with the flat face towards you.",
     "init": "Interface works but the ECU didn't answer. Key on, kill switch at RUN, side stand up. Is the "
             "K-line on the right DLC pin? Try again; some ECUs only answer within a few seconds of key-on.",
 }

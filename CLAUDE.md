@@ -36,9 +36,11 @@ Read a table: `72 05 71 <t> <cs>` → `02 <len> 71 <t> <data> <cs>`. Byte 1 is t
 to 0 mod 256. Faults: `72 05 74 <n>` current / `73 <n>` past (layout a guess). Clear: `72 05 60 03` (unverified).
 
 ## Status / unverified
-- Nothing has run on the bike yet. The table 0x11 layout in `TABLE11` and the fault-code decoding are guesses from
-  other Honda models: confirm each byte from the raw view (key on, engine off, open the throttle → which byte moves,
-  etc.) and fix `TABLE11`.
+- 2026-10-27: it talks on the bike (C6, COM6 on the new PC). The first fault was the interface GND not joined to the
+  ESP32/DLC G. Wake-up, init, table 0x11 and the fault tables all answer. Key on, engine off, table 0x11 read
+  `00 00 19 00 96 40 98 40 93 64 FF FF 7D 00 00 00 80 55 28 6E`, which decodes sensibly with `TABLE11` (0 rpm,
+  TPS 0.49 V, coolant/air 24 °C, MAP 100 kPa, battery 12.5 V); still confirm throttle/rpm bytes move. Bytes 17-19 unknown.
+- Fault rows: byte 0 unknown, then (main, sub) pairs. Current: 54-2. Past: 1-2, 8-1, 9-2, 12-1, 54-1, 54-2.
 - `check` steps: 1 bridge, 2 line idles high, 3 hold-low seen, 4 echo, 5 ECU init, 6 table 0x11. On the bench
   (9 V battery for the 12 V, no ECU) 1-4 should pass.
 - The bike "runs badly": ask Neil for the symptoms; diagnose from the session logs (marks, fault codes, sensor
