@@ -3,14 +3,15 @@
   python pc/map_editor.py [image.bin]
 
 - Open a backup (backups/.../flash.bin) or a stock image (reference/stock_bins/...).
-- Pick a table on the left: heat-map grid, rpm down the side, throttle or MAP across the top.
-- Click or drag to select cells; type a value and Enter, or use -5% / -1% / +1% / +5% (keys - and +).
-  Ctrl+Z undoes. Changed cells are drawn bold with a black border.
+- Pick a table on the left: heat-map grid in real units (ms of injector time, degrees of advance, rpm, %).
+  Maps have rpm down the side and throttle (or MAP, see "columns") across the top.
+- Click or drag to select cells; type a value in the table's units and Enter, or use -5% / -1% / +1% / +5% and
+  -step / +step (one raw count). Keys: + and -. Ctrl+Z undoes. Changed cells are bold with a black border.
 - Compare… loads a second image: cells that differ get a purple corner.
-- Explorer: look at any address as a grid (read only) to hunt for more tables.
+- Explorer: any address as a grid of raw numbers (read only), to hunt for more tables.
+- Off-road options: tick to apply (O2 closed loop off, fault codes off); untick puts the stock values back.
 - Save as… writes a new file with the checksum fixed, plus <file>.changes.json listing every change.
   It refuses to overwrite the opened file or anything in backups/ or reference/.
-- Off-road options are listed but stay disabled until their flags are found in the ROM (see the definition file).
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from rom import PROJECT, Rom, RomError, SIZES, num
 
-CELL_W, CELL_H, HEAD_W, HEAD_H = 46, 19, 64, 34
+MAP_W, LIST_W, CELL_H, HEAD_W, HEAD_H = 46, 150, 19, 96, 34
 CONF_TAG = {"confirmed": "✔", "likely": "~", "guess": "?"}
 
 
@@ -34,30 +35,40 @@ def heat(t: float) -> str:
     for (a, ca), (b, cb) in zip(stops, stops[1:]):
         if t <= b:
             f = (t - a) / (b - a)
-            c = [int(ca[i] + (cb[i] - ca[i]) * f) for i in range(3)]
-            return "#%02x%02x%02x" % tuple(c)
+            return "#%02x%02x%02x" % tuple(int(ca[i] + (cb[i] - ca[i]) * f) for i in range(3))
     return "#e6503c"
 
 
 class TableView:
-    """A defined, editable table."""
+    """A defined table (map or list), shown in its units."""
 
     def __init__(self, table):
         self.t = table
         self.nrows, self.ncols = table.nrows, table.ncols
-        self.editable = True
-        self.title = table.name
-        self.row_labels = table.rows_axis.labels()
-        self.col_labels = table.cols_axis.labels()
-        self.row_unit, self.col_unit = table.rows_axis.unit, table.cols_axis.unit
-        g = [table.get_in(table.rom.original, r, c) for r in range(self.nrows) for c in range(self.ncols)]
-        self.lo, self.hi = min(g), max(g)
+        self.editable = not table.readonly
+        self.cell_w = LIST_W if table.kind == "list" else MAP_W
+        self.title = table.name + (f"  [{table.unit}]" if table.unit else "") + ("  (read only)" if table.readonly else "")
+        self.refresh_labels()
+        cols = range(self.ncols)
+        if table.kind == "list":   # fields differ, so colour each column on its own
+            self.lohi = {c: self._range([table.orig(r, c) for r in range(self.nrows)]) for c in cols}
+        else:
+            rng = self._range([table.orig(r, c) for r in range(self.nrows) for c in cols])
+            self.lohi = {c: rng for c in cols}
+
+    @staticmethod
+    def _range(vals):
+        return (min(vals), max(vals)) if vals else (0, 1)
+
+    def refresh_labels(self):
+        self.row_labels, self.col_labels = self.t.row_labels(), self.t.col_labels()
+        self.row_unit, self.col_unit = self.t.row_unit, self.t.col_unit
 
     def get(self, r, c):
         return self.t.get(r, c)
 
     def orig(self, r, c):
-        return self.t.get_in(self.t.rom.original, r, c)
+        return self.t.orig(r, c)
 
     def get_in(self, data, r, c):
         return self.t.get_in(data, r, c)
@@ -65,20 +76,25 @@ class TableView:
     def addr(self, r, c):
         return self.t.cell_addr(r, c)
 
+    def text(self, r, c, raw):
+        return self.t.fmt(r, c, raw)
+
 
 class RawView:
-    """Explorer: any address shown as a grid, read only."""
+    """Explorer: any address shown as a grid of raw numbers, read only."""
 
     def __init__(self, rom: Rom, addr: int, width: int, rows: int, typ: str):
         self.rom, self.addr0, self.ncols, self.nrows, self.typ = rom, addr, width, rows, typ
         self.size = SIZES[typ]
         self.editable = False
-        self.title = f"Explorer {addr:04X}, {width} wide, {typ}"
+        self.cell_w = MAP_W
+        self.title = f"Explorer {addr:04X}, {width} wide, {typ} (raw numbers)"
         self.row_labels = [f"{addr + r * width * self.size:04X}" for r in range(rows)]
         self.col_labels = [f"+{c * self.size:X}" for c in range(width)]
         self.row_unit, self.col_unit = "address", "offset"
         vals = [self.get(r, c) for r in range(rows) for c in range(width)]
-        self.lo, self.hi = (min(vals), max(vals)) if vals else (0, 1)
+        rng = (min(vals), max(vals)) if vals else (0, 1)
+        self.lohi = {c: rng for c in range(width)}
 
     def addr(self, r, c):
         return self.addr0 + (r * self.ncols + c) * self.size
@@ -93,17 +109,22 @@ class RawView:
     def orig(self, r, c):
         return self.get_in(self.rom.original, r, c)
 
+    def text(self, r, c, raw):
+        return str(raw)
+
 
 class App(tk.Tk):
     def __init__(self, path=None):
         super().__init__()
         self.title("CBR250R map editor")
-        self.geometry("1440x800")
+        self.geometry("1480x820")
         self.rom: Rom | None = None
         self.compare: bytes | None = None
+        self.compare_name = ""
         self.view = None
         self.sel = None            # (r0, c0, r1, c1)
         self.anchor = None
+        self.opt_vars = {}
         self._build()
         if path:
             self.open(path)
@@ -120,17 +141,22 @@ class App(tk.Tk):
 
         main = ttk.Frame(self)
         main.pack(fill="both", expand=True)
-        left = ttk.Frame(main, padding=4, width=300)
+        left = ttk.Frame(main, padding=4, width=310)
         left.pack(side="left", fill="y")
         left.pack_propagate(False)
 
         ttk.Label(left, text="Tables  (~ likely, ? guess)", font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        self.tlist = tk.Listbox(left, height=8, exportselection=False, font=("Segoe UI", 10))
+        self.tlist = tk.Listbox(left, height=9, exportselection=False, font=("Segoe UI", 10))
         self.tlist.pack(fill="x")
         self.tlist.bind("<<ListboxSelect>>", lambda e: self.pick_table())
 
+        op = ttk.LabelFrame(left, text="Off-road options (image only, not the ECU)", padding=4)
+        op.pack(fill="x", pady=6)
+        self.opt_frame = op
+        ttk.Label(op, text="(open an image)").pack(anchor="w")
+
         ex = ttk.LabelFrame(left, text="Explorer (read only)", padding=4)
-        ex.pack(fill="x", pady=6)
+        ex.pack(fill="x", pady=4)
         self.ex_addr, self.ex_w, self.ex_n, self.ex_t = (tk.StringVar(value=v) for v in ("A000", "22", "29", "u8"))
         for i, (lab, var) in enumerate((("address", self.ex_addr), ("width", self.ex_w), ("rows", self.ex_n))):
             ttk.Label(ex, text=lab).grid(row=0, column=2 * i, sticky="w")
@@ -139,19 +165,20 @@ class App(tk.Tk):
             row=1, column=0, columnspan=2, pady=3, sticky="w")
         ttk.Button(ex, text="Show", command=self.show_raw).grid(row=1, column=2, columnspan=2, sticky="w")
 
-        op = ttk.LabelFrame(left, text="Off-road options", padding=4)
-        op.pack(fill="x", pady=6)
-        self.opt_frame = op
-        ttk.Label(op, text="(open an image)").pack(anchor="w")
-
         ttk.Label(left, text="Evidence", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(6, 0))
-        self.evidence = tk.Text(left, height=12, wrap="word", font=("Segoe UI", 9), relief="flat", bg="#f4f4f4")
+        self.evidence = tk.Text(left, height=10, wrap="word", font=("Segoe UI", 9), relief="flat", bg="#f4f4f4")
         self.evidence.pack(fill="both", expand=True)
 
         right = ttk.Frame(main)
         right.pack(side="left", fill="both", expand=True)
-        self.heading = ttk.Label(right, text="", font=("Segoe UI", 11, "bold"), padding=(4, 4))
-        self.heading.pack(anchor="w")
+        top = ttk.Frame(right)
+        top.pack(fill="x")
+        self.heading = ttk.Label(top, text="", font=("Segoe UI", 11, "bold"), padding=(4, 4))
+        self.heading.pack(side="left")
+        self.collabel = ttk.Label(top, text="columns:")
+        self.colvar = tk.StringVar()
+        self.colbox = ttk.Combobox(top, textvariable=self.colvar, state="readonly", width=8)
+        self.colbox.bind("<<ComboboxSelected>>", lambda e: self.pick_cols())
         holder = ttk.Frame(right)
         holder.pack(fill="both", expand=True)
         self.canvas = tk.Canvas(holder, bg="white", highlightthickness=0)
@@ -167,7 +194,7 @@ class App(tk.Tk):
 
         edit = ttk.Frame(right, padding=4)
         edit.pack(fill="x")
-        self.sel_label = ttk.Label(edit, text="", width=48)
+        self.sel_label = ttk.Label(edit, text="", width=58)
         self.sel_label.pack(side="left")
         ttk.Label(edit, text="value").pack(side="left")
         self.value = tk.StringVar()
@@ -177,6 +204,9 @@ class App(tk.Tk):
         ttk.Button(edit, text="Set", command=self.set_value).pack(side="left")
         for pct in (-5, -1, 1, 5):
             ttk.Button(edit, text=f"{pct:+d}%", width=5, command=lambda p=pct: self.scale(p)).pack(side="left", padx=1)
+        for st in (-1, 1):
+            ttk.Button(edit, text=("-" if st < 0 else "+") + "step", width=6,
+                       command=lambda s=st: self.step(s)).pack(side="left", padx=1)
         ttk.Button(edit, text="Revert cells", command=self.revert).pack(side="left", padx=8)
         self.hover = ttk.Label(right, text="", padding=(4, 2), foreground="#444")
         self.hover.pack(anchor="w")
@@ -188,8 +218,9 @@ class App(tk.Tk):
 
     # ---------------------------------------------------------------- files
     def ask_open(self):
-        p = filedialog.askopenfilename(initialdir=os.path.join(PROJECT, "backups") if os.path.isdir(
-            os.path.join(PROJECT, "backups")) else PROJECT, filetypes=[("ECU image", "*.bin"), ("All", "*.*")])
+        start = os.path.join(PROJECT, "backups")
+        p = filedialog.askopenfilename(initialdir=start if os.path.isdir(start) else PROJECT,
+                                       filetypes=[("ECU image", "*.bin"), ("All", "*.*")])
         if p:
             self.open(p)
 
@@ -207,30 +238,20 @@ class App(tk.Tk):
         self.tlist.selection_set(0)
         self.pick_table()
 
-    def _options(self):
-        for w in self.opt_frame.winfo_children():
-            w.destroy()
-        for o in self.rom.defn.get("options", []):
-            found = o.get("status") == "found"
-            cb = ttk.Checkbutton(self.opt_frame, text=o["name"], state="normal" if found else "disabled")
-            cb.pack(anchor="w")
-            if not found:
-                ttk.Label(self.opt_frame, text="   not found in the ROM yet: " + o.get("note", ""),
-                          foreground="#888", wraplength=270, font=("Segoe UI", 8)).pack(anchor="w")
-
     def ask_compare(self):
         if not self.rom:
             return
         p = filedialog.askopenfilename(initialdir=os.path.dirname(self.rom.path),
                                        filetypes=[("ECU image", "*.bin"), ("All", "*.*")])
-        if not p:
-            return
+        if p:
+            self.set_compare(p)
+
+    def set_compare(self, p):
         data = open(p, "rb").read()
         if len(data) != len(self.rom.data):
             messagebox.showerror("Compare", f"different size ({len(data)} vs {len(self.rom.data)} bytes)")
             return
-        self.compare = data
-        self.compare_name = os.path.basename(p)
+        self.compare, self.compare_name = data, os.path.basename(p)
         self.redraw()
 
     def ask_save(self):
@@ -250,6 +271,51 @@ class App(tk.Tk):
                                      f"{info['checksum_byte']}\nChanges listed in {os.path.basename(p)}.changes.json\n\n"
                                      "Nothing has been written to the ECU.")
 
+    # ---------------------------------------------------------------- off-road options
+    def _options(self):
+        for w in self.opt_frame.winfo_children():
+            w.destroy()
+        self.opt_vars = {}
+        for o in self.rom.defn.get("options", []):
+            status = o.get("status")
+            if status == "found":
+                var = tk.BooleanVar(value=self._opt_on(o))
+                self.opt_vars[o["id"]] = var
+                ttk.Checkbutton(self.opt_frame, text=o["name"], variable=var,
+                                command=lambda opt=o, v=var: self.toggle_option(opt, v)).pack(anchor="w")
+            else:
+                mark = "✓ " if status == "no ECU change" else "✗ "
+                ttk.Label(self.opt_frame, text=mark + o["name"]).pack(anchor="w")
+            pre = "not found in the ROM yet: " if status == "not found" else ""
+            ttk.Label(self.opt_frame, text="   " + pre + o.get("note", ""), foreground="#777", wraplength=285,
+                      font=("Segoe UI", 8)).pack(anchor="w")
+
+    def _opt_on(self, o):
+        try:
+            return self.rom.option_on(o)
+        except RomError:
+            return False
+
+    def refresh_options(self):
+        if not self.rom:
+            return
+        for o in self.rom.defn.get("options", []):
+            if o["id"] in self.opt_vars:
+                self.opt_vars[o["id"]].set(self._opt_on(o))
+
+    def toggle_option(self, o, var, ask=True):
+        on = var.get()
+        if on and ask and not messagebox.askokcancel(o["name"], o.get("note", "") + "\n\nThis only changes the image "
+                                                     "in the editor. Nothing goes to the ECU. Go ahead?"):
+            var.set(False)
+            return
+        try:
+            self.rom.set_option(o, on)
+        except RomError as e:
+            messagebox.showerror(o["name"], str(e))
+        self.refresh_options()
+        self.redraw()
+
     # ---------------------------------------------------------------- views
     def pick_table(self):
         if not self.rom or not self.tlist.curselection():
@@ -257,25 +323,48 @@ class App(tk.Tk):
         t = self.rom.tables[self.tlist.curselection()[0]]
         self.view = TableView(t)
         self.sel = None
-        self.evidence.delete("1.0", "end")
-        self.evidence.insert("end", f"{t.name}\naddress {t.addr:04X}-{t.end() - 1:04X}, {t.nrows} x {t.ncols} "
-                                    f"{t.type}\nconfidence: {t.confidence}\nunit: {t.unit}\n\n{t.evidence}\n\n"
-                                    f"rows: {t.rows_axis.unit} ({t.rows_axis.d.get('confidence')}): "
-                                    f"{t.rows_axis.d.get('evidence', '')}\n\ncolumns: {t.cols_axis.unit} "
-                                    f"({t.cols_axis.d.get('confidence')}): {t.cols_axis.d.get('evidence', '')}")
+        self._colchooser(t)
+        self._evidence(t)
         self.redraw()
+
+    def _evidence(self, t):
+        txt = (f"{t.name}\naddress {t.addr:04X}-{t.end() - 1:04X}, {t.nrows} x {t.ncols}\nconfidence: "
+               f"{t.confidence}\n\n{t.evidence}")
+        if t.kind == "map":
+            for lab, ax in (("rows", t.rows_axis), ("columns", t.cols_axis)):
+                txt += f"\n\n{lab}: {ax.unit} ({ax.d.get('confidence')}): {ax.d.get('evidence', '')}"
+        self.evidence.delete("1.0", "end")
+        self.evidence.insert("end", txt)
+
+    def _colchooser(self, t):
+        if t is not None and len(t.col_choices) > 1:
+            self.colbox.config(values=t.col_choices)
+            self.colvar.set(t.cols_axis.key)
+            self.collabel.pack(side="left", padx=(16, 2))
+            self.colbox.pack(side="left")
+        else:
+            self.collabel.pack_forget()
+            self.colbox.pack_forget()
+
+    def pick_cols(self):
+        if isinstance(self.view, TableView):
+            self.view.t.set_cols(self.colvar.get())
+            self.view.refresh_labels()
+            self._evidence(self.view.t)
+            self.redraw()
 
     def show_raw(self):
         if not self.rom:
             return
         try:
-            v = RawView(self.rom, num("0x" + self.ex_addr.get().strip().replace("0x", "")), int(self.ex_w.get()),
-                        int(self.ex_n.get()), self.ex_t.get())
+            v = RawView(self.rom, num("0x" + self.ex_addr.get().strip().lower().replace("0x", "")),
+                        int(self.ex_w.get()), int(self.ex_n.get()), self.ex_t.get())
         except ValueError:
             messagebox.showerror("Explorer", "address in hex, width and rows as numbers")
             return
         self.view, self.sel = v, None
         self.tlist.selection_clear(0, "end")
+        self._colchooser(None)
         self.redraw()
 
     def redraw(self):
@@ -284,38 +373,39 @@ class App(tk.Tk):
         v = self.view
         if not v or not self.rom:
             return
+        w = v.cell_w
         changed = len(self.rom.changed_bytes())
         self.info.config(text=f"{os.path.basename(self.rom.path)}   ECM ID {self.rom.ecmid()} ({self.rom.part_number()})"
                               f"   checksum {'OK' if self.rom.sum_ok(self.rom.original) else 'BAD in file'}"
                               f"   {changed} bytes changed"
                               + (f"   comparing with {self.compare_name}" if self.compare else ""))
         self.heading.config(text=f"{v.title}    rows: {v.row_unit}    columns: {v.col_unit}")
-        span = max(1, v.hi - v.lo)
-        c.create_text(HEAD_W / 2, HEAD_H / 2, text="rpm \\ col" if v.editable else "addr", font=("Segoe UI", 8))
+        c.create_text(HEAD_W / 2, HEAD_H / 2, text=f"{v.row_unit} \\ col", font=("Segoe UI", 8))
         for j, lab in enumerate(v.col_labels):
-            x = HEAD_W + j * CELL_W
-            c.create_rectangle(x, 0, x + CELL_W, HEAD_H, fill="#e8e8e8", outline="#ccc")
-            c.create_text(x + CELL_W / 2, HEAD_H / 2, text=lab, font=("Segoe UI", 8))
+            x = HEAD_W + j * w
+            c.create_rectangle(x, 0, x + w, HEAD_H, fill="#e8e8e8", outline="#ccc")
+            c.create_text(x + w / 2, HEAD_H / 2, text=lab, font=("Segoe UI", 8), width=w - 2)
         for i, lab in enumerate(v.row_labels):
             y = HEAD_H + i * CELL_H
             c.create_rectangle(0, y, HEAD_W, y + CELL_H, fill="#e8e8e8", outline="#ccc")
             c.create_text(HEAD_W - 4, y + CELL_H / 2, text=lab, anchor="e", font=("Segoe UI", 8))
             for j in range(v.ncols):
-                x = HEAD_W + j * CELL_W
+                x = HEAD_W + j * w
                 val, org = v.get(i, j), v.orig(i, j)
-                c.create_rectangle(x, y, x + CELL_W, y + CELL_H, fill=heat((val - v.lo) / span), outline="#ffffff")
+                lo, hi = v.lohi[j]
+                c.create_rectangle(x, y, x + w, y + CELL_H, fill=heat((val - lo) / max(1, hi - lo)), outline="#ffffff")
                 bold = val != org
-                c.create_text(x + CELL_W / 2, y + CELL_H / 2, text=str(val),
+                c.create_text(x + w / 2, y + CELL_H / 2, text=v.text(i, j, val),
                               font=("Segoe UI", 8, "bold" if bold else "normal"))
                 if bold:
-                    c.create_rectangle(x + 1, y + 1, x + CELL_W - 1, y + CELL_H - 1, outline="black", width=2)
+                    c.create_rectangle(x + 1, y + 1, x + w - 1, y + CELL_H - 1, outline="black", width=2)
                 if self.compare is not None and v.get_in(self.compare, i, j) != val:
-                    c.create_polygon(x + CELL_W - 10, y, x + CELL_W, y, x + CELL_W, y + 10, fill="#8e24aa")
+                    c.create_polygon(x + w - 10, y, x + w, y, x + w, y + 10, fill="#8e24aa")
         if self.sel:
             r0, c0, r1, c1 = self.sel
-            c.create_rectangle(HEAD_W + c0 * CELL_W, HEAD_H + r0 * CELL_H, HEAD_W + (c1 + 1) * CELL_W,
+            c.create_rectangle(HEAD_W + c0 * w, HEAD_H + r0 * CELL_H, HEAD_W + (c1 + 1) * w,
                                HEAD_H + (r1 + 1) * CELL_H, outline="#1565c0", width=3)
-        c.configure(scrollregion=(0, 0, HEAD_W + v.ncols * CELL_W + 4, HEAD_H + v.nrows * CELL_H + 4))
+        c.configure(scrollregion=(0, 0, HEAD_W + v.ncols * w + 4, HEAD_H + v.nrows * CELL_H + 4))
         self._sel_text()
 
     # ---------------------------------------------------------------- mouse / selection
@@ -323,7 +413,7 @@ class App(tk.Tk):
         x, y = self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
         if not self.view or x < HEAD_W or y < HEAD_H:
             return None
-        r, c = int((y - HEAD_H) // CELL_H), int((x - HEAD_W) // CELL_W)
+        r, c = int((y - HEAD_H) // CELL_H), int((x - HEAD_W) // self.view.cell_w)
         if r >= self.view.nrows or c >= self.view.ncols:
             return None
         return r, c
@@ -337,7 +427,7 @@ class App(tk.Tk):
         else:
             self.anchor = rc
             self._select(rc, rc)
-            self.value.set(str(self.view.get(*rc)))
+            self.value.set(self.view.text(*rc, self.view.get(*rc)))
         self.focus_set()
 
     def on_drag(self, e):
@@ -360,10 +450,13 @@ class App(tk.Tk):
         if not cells:
             self.sel_label.config(text="select cells (click, drag, shift-click)")
             return
-        vals = [v.get(r, c) for r, c in cells]
         r0, c0, r1, c1 = self.sel
-        self.sel_label.config(text=f"{len(cells)} cells, rpm {v.row_labels[r0]}-{v.row_labels[r1]}, "
-                                   f"col {v.col_labels[c0]}-{v.col_labels[c1]}, avg {sum(vals) / len(vals):.1f}")
+        txt = (f"{len(cells)} cells, {v.row_unit} {v.row_labels[r0]}-{v.row_labels[r1]}, "
+               f"{v.col_unit} {v.col_labels[c0]}-{v.col_labels[c1]}")
+        if isinstance(v, TableView) and (v.t.kind == "map" or c0 == c1):
+            vals = [v.t.value(r, c, v.get(r, c)) for r, c in cells]
+            txt += f", average {sum(vals) / len(vals):.2f}"
+        self.sel_label.config(text=txt)
 
     def on_hover(self, e):
         rc = self.cell_at(e)
@@ -372,17 +465,19 @@ class App(tk.Tk):
         v = self.view
         r, c = rc
         val, org = v.get(r, c), v.orig(r, c)
-        txt = (f"{v.row_unit} {v.row_labels[r]}, {v.col_unit} {v.col_labels[c]}: {val}   (stock {org}"
-               + (f", {100 * (val - org) / org:+.1f}%" if org and val != org else "") + f")   address {v.addr(r, c):04X}")
+        txt = (f"{v.row_unit} {v.row_labels[r]}, {v.col_unit} {v.col_labels[c]}: {v.text(r, c, val)}   "
+               f"(stock {v.text(r, c, org)})   raw {val}   address {v.addr(r, c):04X}")
         if self.compare is not None:
-            txt += f"   {self.compare_name}: {v.get_in(self.compare, r, c)}"
+            txt += f"   {self.compare_name}: {v.text(r, c, v.get_in(self.compare, r, c))}"
         self.hover.config(text=txt)
 
     # ---------------------------------------------------------------- editing
     def _edit(self, fn):
+        """fn(table, row, col, current raw, stock raw) -> new raw, for every selected cell, as one undo step."""
         v = self.view
         if not v or not v.editable:
-            messagebox.showinfo("Edit", "Explorer is read only. Pick a table on the left to edit it.")
+            messagebox.showinfo("Edit", "This view is read only (Explorer, or a table changed only through the "
+                                        "off-road options).")
             return
         cells = self.cells()
         if not cells:
@@ -390,10 +485,11 @@ class App(tk.Tk):
         self.rom.begin()
         try:
             for r, c in cells:
-                v.t.set(r, c, fn(v.get(r, c), v.orig(r, c)))
+                v.t.set(r, c, fn(v.t, r, c, v.get(r, c), v.orig(r, c)))
         except RomError as e:
             messagebox.showerror("Edit", str(e))
         self.rom.commit()
+        self.refresh_options()
         self.redraw()
 
     def set_value(self):
@@ -401,16 +497,23 @@ class App(tk.Tk):
             x = float(self.value.get())
         except ValueError:
             return
-        self._edit(lambda cur, org: x)
+        self._edit(lambda t, r, c, cur, org: t.to_raw(r, c, x))
 
     def scale(self, pct):
-        self._edit(lambda cur, org: cur * (1 + pct / 100) if cur * abs(pct) >= 100 else cur + (1 if pct > 0 else -1))
+        def f(t, r, c, cur, org):
+            new = t.to_raw(r, c, t.value(r, c, cur) * (1 + pct / 100))
+            return new if new != cur else cur + (1 if pct > 0 else -1)   # always at least one step
+        self._edit(f)
+
+    def step(self, st):
+        self._edit(lambda t, r, c, cur, org: cur + st)
 
     def revert(self):
-        self._edit(lambda cur, org: org)
+        self._edit(lambda t, r, c, cur, org: org)
 
     def do_undo(self):
         if self.rom and self.rom.undo_last():
+            self.refresh_options()
             self.redraw()
 
 

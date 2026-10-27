@@ -1,6 +1,6 @@
 {
  "name": "CBR250R MC41, Keihin software KYJA203 (38770-KYJ-922 / -971)",
- "notes": "Built 2026-10-27 from the stock 922 and 971 images and the HondaDLC logs. Confidence: 'confirmed' = checked against the bike, 'likely' = strong evidence, 'guess' = shape only. Never add a table without evidence.",
+ "notes": "Sources: our own search of the stock 922/971 images and the HondaDLC logs (2026-10-27), and the TunerPro XDF 'CBR250R_cbrlocal_testing' by cbrlocal (cbr250.net, 2023-10-27; copy in reference/). Confidence: 'confirmed' = checked on the bike, 'likely' = two independent sources agree, 'guess' = one source or shape only. Never add a table without evidence.",
  "rom": {
   "size": 57344,
   "checksum_addr": "0xDFEF",
@@ -13,53 +13,87 @@
   "rpm": {
    "addr": "0xA004", "count": 29, "type": "u16be", "scale": 0.274658203125, "unit": "rpm", "digits": 0,
    "confidence": "likely",
-   "evidence": "29 increasing words; x 18000/65536 gives round rpm: 800, 1000, 1200, 1300 ... 10000, 10500. 29 = the row count of the four maps."
+   "evidence": "Ours: x 18000/65536 gives round rpm 800, 1000 ... 10,500. XDF: same address, X*7/25.485 (the same scale)."
   },
   "tps": {
-   "addr": "0xA03E", "count": 22, "type": "u16be", "scale": 1, "unit": "TPS counts (0-1023)", "digits": 0,
+   "addr": "0xA03E", "count": 22, "type": "u16be", "scale": 0.0977517106549, "unit": "throttle %", "digits": 1,
    "confidence": "likely",
-   "evidence": "22 increasing words from 0 to 1023 (10-bit ADC), dense at small openings. 22 = the column count. Fuel A / ignition A follow it: logged advance vs ignition A interpolated on rpm x TPS gives r = 0.83."
+   "evidence": "Ours: 0-1023 (10-bit TPS). XDF: same address, X/10.23 = % (gives round 0, 1, 2 ... 50, 60, 70, 100 %)."
   },
   "map": {
-   "addr": "0xA06A", "count": 22, "type": "u8", "scale": 1, "unit": "MAP sensor counts (0-255)", "digits": 0,
-   "confidence": "guess",
-   "evidence": "22 increasing bytes 0..255 straight after the TPS axis. Assumed to be the MAP sensor (fuel B rises steadily across it)."
+   "addr": "0xA06A", "count": 22, "type": "u8", "scale": 0.38, "unit": "MAP kPa", "digits": 0,
+   "confidence": "likely",
+   "evidence": "Ours: 22 bytes 0-255 after the TPS axis. XDF: same address, MAP axis, X*3.8 mbar (0-97 kPa)."
   }
  },
  "tables": [
   {
-   "id": "fuel_a", "name": "Fuel A (rpm x throttle)", "addr": "0xA080", "type": "u16be",
-   "rows": "rpm", "cols": "tps", "scale": 1, "unit": "raw (injector time, units unknown)", "digits": 0,
+   "id": "fuel_a", "name": "Fuel A (primary)", "addr": "0xA080", "type": "u16be",
+   "rows": "rpm", "cols": "tps", "cols_alt": ["map"], "scale": 0.0008, "unit": "ms injector", "digits": 2,
    "confidence": "likely",
-   "evidence": "29 x 22 words, every row rises with throttle and flattens at wide open. Logged injector time (table 0x11 bytes 14-15) vs this map: r = 0.76 (bike on the stand, faulty)."
+   "evidence": "Ours: 29 x 22 words, rising with load. XDF: same address, 'Speed Density, mBar vs RPM, the primary fuel table', X*0.0008 (ms). Axis disagreement: the XDF says MAP, but the HondaDLC logs fit throttle far better (logged injector time vs this map: r = 0.80 on throttle, 0.41 on MAP). Use 'columns' to switch."
   },
   {
-   "id": "fuel_b", "name": "Fuel B (rpm x MAP)", "addr": "0xA57C", "type": "u16be",
-   "rows": "rpm", "cols": "map", "scale": 1, "unit": "raw (injector time, units unknown)", "digits": 0,
-   "confidence": "guess",
-   "evidence": "29 x 22 words straight after fuel A, rising across the columns. Which axis it uses and when the ECU uses it (low throttle / idle?) is not known."
-  },
-  {
-   "id": "ign_a", "name": "Ignition A (rpm x throttle)", "addr": "0xAA78", "type": "u8",
-   "rows": "rpm", "cols": "tps", "scale": 1, "unit": "raw (advance, scale unknown)", "digits": 0,
+   "id": "fuel_b", "name": "Fuel B (secondary)", "addr": "0xA57C", "type": "u16be",
+   "rows": "rpm", "cols": "tps", "cols_alt": ["map"], "scale": 0.0008, "unit": "ms injector", "digits": 2,
    "confidence": "likely",
-   "evidence": "29 x 22 bytes, rises with rpm and falls with load like an advance map. Logged advance (table 0x11 byte 16) vs this map: r = 0.83, about 0.9 x map + 94."
+   "evidence": "Ours: 29 x 22 words after fuel A. XDF: same address, 'Alpha-N, the secondary fuel table', throttle axis, X*0.0008. Logs: r = 0.80 on throttle, 0.45 on MAP. When the ECU uses A vs B is not known."
   },
   {
-   "id": "ign_b", "name": "Ignition B (rpm x MAP)", "addr": "0xACF6", "type": "u8",
-   "rows": "rpm", "cols": "map", "scale": 1, "unit": "raw (advance, scale unknown)", "digits": 0,
+   "id": "ign_a", "name": "Ignition, in gear", "addr": "0xAA78", "type": "u8",
+   "rows": "rpm", "cols": "tps", "cols_alt": ["map"], "scale": 0.355, "offset": -15.71, "unit": "° advance", "digits": 1,
+   "confidence": "likely",
+   "evidence": "Ours: 29 x 22 bytes, rises with rpm, falls with load. XDF: same address, 'Ignition Timing Gears 1-6', throttle axis, X*0.355-15.71 deg (scale not checked: compare idle with the workshop manual's ignition timing spec). Logs (bike in neutral): r = 0.93 on throttle."
+  },
+  {
+   "id": "ign_b", "name": "Ignition, neutral", "addr": "0xACF6", "type": "u8",
+   "rows": "rpm", "cols": "tps", "cols_alt": ["map"], "scale": 0.355, "offset": -15.71, "unit": "° advance", "digits": 1,
+   "confidence": "likely",
+   "evidence": "Ours: same shape after ignition A; the only table that differs 922 vs 971 (0xAD40-0xADA0). XDF: same address, 'Ignition Timing Neutral', X*0.355-15.71. Logs (bike on the stand, in neutral): r = 0.96 on throttle, the best fit of the four maps, which supports the 'neutral' label."
+  },
+  {
+   "id": "rev_limit", "kind": "list", "name": "Rev limiter", "addr": "0xB582", "count": 2, "stride": 2,
+   "row_names": ["fuel back on", "fuel cut"],
+   "fields": [{"name": "rpm", "offset": 0, "type": "u16be", "scale": 0.27465812, "unit": "rpm", "digits": 0}],
    "confidence": "guess",
-   "evidence": "29 x 22 bytes, same shape as ignition A. The only calibration table that differs between the 922 and 971 images (0xAD40-0xADA0: 3F/40 vs 39/3A)."
+   "evidence": "XDF only: 'Rev Limiter', fuel enable / fuel cut, X/3.64089. Stock 10,300 / 10,500 rpm in both images."
+  },
+  {
+   "id": "cl_lower", "kind": "list", "name": "O2 closed loop: lower throttle limit", "addr": "0xB5FC", "count": 8, "stride": 4,
+   "fields": [
+    {"name": "rpm", "offset": 0, "type": "u16be", "scale": 0.27465812, "unit": "rpm", "digits": 0},
+    {"name": "closed loop above", "offset": 2, "type": "u16be", "scale": 0.0977517106549, "unit": "% throttle", "digits": 1}],
+   "confidence": "guess",
+   "evidence": "XDF only: 'Lower Throttle Angle: closed loop is active above this percent'. Stock 3.5 % at every rpm."
+  },
+  {
+   "id": "cl_upper", "kind": "list", "name": "O2 closed loop: upper throttle limit", "addr": "0xB61E", "count": 8, "stride": 4,
+   "fields": [
+    {"name": "rpm", "offset": 0, "type": "u16be", "scale": 0.27465812, "unit": "rpm", "digits": 0},
+    {"name": "open loop above", "offset": 2, "type": "u16be", "scale": 0.0977517106549, "unit": "% throttle", "digits": 1}],
+   "confidence": "guess",
+   "evidence": "XDF only: 'Upper Throttle Angle: open loop is activated above this throttle percent'. Stock 30 % (18.5 % in the 2,000 rpm entry). So the O2 sensor trims the fuel between about 3.5 % and 30 % throttle."
+  },
+  {
+   "id": "dtc_list", "kind": "list", "name": "Fault code list", "addr": "0xC5DC", "count": 32, "stride": 2, "readonly": true,
+   "fields": [
+    {"name": "main", "offset": 0, "type": "u8", "scale": 1, "unit": "", "digits": 0},
+    {"name": "sub", "offset": 1, "type": "u8", "scale": 1, "unit": "", "digits": 0}],
+   "confidence": "likely",
+   "evidence": "XDF: 'DTCs' at this address. Ours: the pairs are exactly the workshop manual's codes (1-1, 1-2, 7-1 ... 21-1, 23-1, 29-1, 54-1, 54-2), with 0-0 in the unused slots. There is no PAIR code in the list. Edited only through the off-road options."
   }
  ],
  "options": [
-  {"id": "o2_off", "name": "O2 sensor closed loop off", "status": "not found",
-   "note": "Needs the flag or the closed-loop limits found in the code first."},
-  {"id": "pair_off", "name": "PAIR (air injection) solenoid off + its fault code", "status": "not found",
-   "note": "Check the workshop manual DTC list: if there is no PAIR code, unplugging the solenoid may be enough."},
-  {"id": "o2_dtc_off", "name": "O2 sensor / heater fault codes off (21-1, 23-1)", "status": "not found",
-   "note": "Only if the sensor is removed. Needs the DTC enable table found first."},
-  {"id": "bank_dtc_off", "name": "Bank angle fault code off (54-2)", "status": "not found",
-   "note": "The sensor is missing on this bike; fitting one is the better fix (it also cuts the engine in a crash)."}
+  {"id": "o2_off", "name": "O2 sensor closed loop off", "status": "found",
+   "note": "Sets the upper throttle limit to 0 % at every rpm, so the ECU stays in open loop (map only). Source: the XDF's description of the limit tables; not yet tested on an ECU.",
+   "edits": [{"table": "cl_upper", "field": 1, "raw": 0}]},
+  {"id": "o2_dtc_off", "name": "O2 sensor + heater fault codes off (21-1, 23-1)", "status": "found",
+   "note": "Only if the sensor is removed. Blanks the two codes in the fault code list to 0-0, like the unused slots. Guess: test on the spare ECU first.",
+   "dtc_off": ["21-1", "23-1"]},
+  {"id": "pair_off", "name": "PAIR (air injection) off", "status": "no ECU change",
+   "note": "The ECU's fault code list has no PAIR code, so unplugging the solenoid and fitting block-off plates probably needs no map change. Check the workshop manual's PAIR wiring to be sure."},
+  {"id": "bank_dtc_off", "name": "Bank angle fault codes off (54-1, 54-2)", "status": "found",
+   "note": "The sensor is missing on this bike. Fitting one is the better fix: it cuts the engine if the bike falls over. Guess: test on the spare ECU first.",
+   "dtc_off": ["54-1", "54-2"]}
  ]
 }

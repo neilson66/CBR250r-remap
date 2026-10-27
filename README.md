@@ -59,9 +59,9 @@ summaries could be read: the forum blocks automated reading), and two stock MC41
 **Not confirmed / unknown:**
 - Whether Neil's ECU is a 922, 971 or another KYJ part number (Stage 1 reads its ECM ID).
 - Whether the read sequence above works on this ECU (nobody here has tried it).
-- **No map definition (XDF) for the MC41 was found.** The free XDFs in HondaECU are for other models; the
-  `cbr250rr-ecu-binary-definition` XDF on GitHub is for the CBR250RR MC51 (38770-K64), a different ECU. Maps will
-  have to be found by us (Stage 3).
+- **Map definition:** none in HondaECU, and the `cbr250rr-ecu-binary-definition` XDF on GitHub is for the CBR250RR
+  MC51 (a different ECU). Update: Neil found cbrlocal's XDF for this ROM on cbr250.net; it agrees with the maps we
+  found ourselves (see "Map editor").
 - Whether the ECU has a boot-mode pin (for a bench read/rescue through the MCU's own bootloader). Only matters if
   K-line recovery fails.
 
@@ -160,19 +160,33 @@ listed but disabled until their flags are found.
 
 ![Map editor](docs/map_editor.png)
 
-Maps found so far in KYJA203 (both stock images use the same layout):
+Maps in KYJA203 (both stock images use the same layout). Two independent sources: our own search of the stock
+images + HondaDLC logs, and the TunerPro XDF `CBR250R_cbrlocal_testing` by cbrlocal (cbr250.net, 2023; Neil found it,
+local copy in `reference/`). Where both agree the entry is "likely"; XDF-only entries are "guess".
 
-| Table | Address | Size | Confidence | Evidence |
+| Table | Address | Size | Units (from the XDF) | Confidence |
 |---|---|---|---|---|
-| rpm axis | 0xA004 | 29 × u16 | likely | × 18000/65536 gives round rpm 800 … 10,500 |
-| throttle axis | 0xA03E | 22 × u16 | likely | 0-1023 (10-bit TPS counts) |
-| MAP axis | 0xA06A | 22 × u8 | guess | 0-255 after the TPS axis |
-| Fuel A (rpm × throttle) | 0xA080 | 29 × 22 u16 | likely | logged injector time vs map r = 0.76 |
-| Fuel B (rpm × MAP) | 0xA57C | 29 × 22 u16 | guess | same shape, rises across MAP |
-| Ignition A (rpm × throttle) | 0xAA78 | 29 × 22 u8 | likely | logged advance vs map r = 0.83 |
-| Ignition B (rpm × MAP) | 0xACF6 | 29 × 22 u8 | guess | the table that differs 922 vs 971 |
+| rpm axis | 0xA004 | 29 × u16 | × 0.27466 = rpm (800 … 10,500) | likely |
+| throttle axis | 0xA03E | 22 × u16 | ÷ 10.23 = % (0 … 100) | likely |
+| MAP axis | 0xA06A | 22 × u8 | × 3.8 = mbar (0 … 97 kPa) | likely |
+| Fuel A (XDF: primary, "speed density") | 0xA080 | 29 × 22 u16 | × 0.0008 = ms injector | likely |
+| Fuel B (XDF: secondary, "alpha-N") | 0xA57C | 29 × 22 u16 | × 0.0008 = ms | likely |
+| Ignition, in gear | 0xAA78 | 29 × 22 u8 | × 0.355 − 15.71 = ° advance | likely |
+| Ignition, neutral | 0xACF6 | 29 × 22 u8 | same | likely |
+| Rev limiter | 0xB582 | 2 × u16 | fuel back on 10,300 / cut 10,500 rpm | guess |
+| O2 closed loop lower / upper throttle limit | 0xB5FC / 0xB61E | 8 × (rpm, %) | closed loop between 3.5 % and 30 % | guess |
+| Fault code list | 0xC5DC | 32 × (main, sub) | the manual's codes; no PAIR code | likely |
 
-Units of the fuel and ignition values aren't known yet (raw numbers). 0xAF74-0xB1F1 is an empty (FF) slot the same size.
+Points still open:
+- **Fuel map axes:** the XDF puts fuel A on MAP, but the logs fit throttle much better for both fuel maps (r 0.80 vs
+  0.41-0.45). The editor's "columns" box switches the labels. When the ECU uses A vs B is unknown.
+- **Ignition scale:** the XDF scale gives 9.5° at idle and up to 59° at high rpm / light throttle. Check the idle
+  figure against the workshop manual's ignition timing spec before trusting the degrees.
+- **Ignition neutral** fits the logs best (r = 0.96; the bike was on the stand in neutral), which backs the XDF label.
+- **Off-road options** in the editor: O2 closed loop off (upper limit → 0 %), O2/heater codes off (21-1, 23-1 → 0-0),
+  bank angle codes off (54-1, 54-2). From the XDF's descriptions; none tested on an ECU yet. PAIR: no code in the
+  list, so probably just unplug it and fit block-off plates.
+- 0xAF74-0xB1F1 is an empty (FF) slot the same size as a map.
 
 ```
 pip install pyserial

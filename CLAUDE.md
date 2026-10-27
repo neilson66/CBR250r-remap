@@ -61,11 +61,16 @@ Flash (from HondaECU source, **not tried on this bike**):
 - Vectors at 0x0000 are 16-bit big-endian (reset 0x0082): looks like a Renesas H8/300H Tiny with 56 KB flash
   (H8/3687?). Unconfirmed until the chip marking is read.
 
-## Maps found (2026-10-27, in pc/definitions/KYJA203.json)
-rpm axis 0xA004 (29 u16, × 18000/65536 = 800…10500 exactly), TPS axis 0xA03E (22 u16, 0-1023), MAP axis? 0xA06A
-(22 u8). Fuel A 0xA080 and Fuel B 0xA57C (29×22 u16), Ignition A 0xAA78 and B 0xACF6 (29×22 u8), empty slot 0xAF74.
-Evidence: HondaDLC logs (rpm ≥ 1800) interpolated on rpm × TPS: ignition A vs table 0x11 byte 16 r = 0.83, fuel A vs
-bytes 14-15 r = 0.76. Units of fuel/ignition values unknown. Off-road option flags not found yet.
+## Maps (2026-10-27, in pc/definitions/KYJA203.json)
+Two sources that agree on every address: our own search (stock images + HondaDLC logs) and cbrlocal's TunerPro XDF
+(`reference/CBR250R_cbrlocal_testing.xdf`, from Neil, git-ignored). rpm axis 0xA004 (29 u16, × 0.27466), TPS axis
+0xA03E (22 u16, ÷ 10.23 %), MAP axis 0xA06A (22 u8, × 3.8 mbar). Fuel A 0xA080 / B 0xA57C (29×22 u16, × 0.0008 ms),
+ignition in gear 0xAA78 / neutral 0xACF6 (29×22 u8, × 0.355 − 15.71 °). XDF only: rev limiter 0xB582, O2 closed-loop
+throttle limits 0xB5FC (lower, 3.5 %) / 0xB61E (upper, 30 %) as 8 × (rpm, TPS), fault code list 0xC5DC (32 × main/sub,
+no PAIR code). Logs (rpm ≥ 1800, bike on the stand in neutral): every map fits throttle better than MAP (fuel 0.80 vs
+0.41-0.45, ignition 0.93-0.96 vs 0.79), so the XDF's MAP axis for fuel A is doubtful. Ignition degree scale and fuel
+ms scale come from the XDF only: check idle timing against the manual. Off-road options (O2 closed loop off, O2/
+heater DTCs, bank angle DTCs) are implemented in the editor from the XDF; none tested on an ECU.
 
 ## Status
 - 2026-10-27: project started, research done, bridge firmware flashed on the C3 (COM15), `remap.py` tested only

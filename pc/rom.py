@@ -47,15 +47,44 @@ class Axis:
 
 
 class Table:
+    """A 2-D map: rows and columns follow axes, every cell the same type and scale."""
+    kind = "map"
+
     def __init__(self, rom: "Rom", d: dict):
         self.rom, self.d = rom, d
         self.id, self.name, self.addr, self.type = d["id"], d["name"], num(d["addr"]), d["type"]
-        self.rows_axis, self.cols_axis = rom.axes[d["rows"]], rom.axes[d["cols"]]
+        self.rows_axis = rom.axes[d["rows"]]
+        self.col_choices = [d["cols"]] + list(d.get("cols_alt", []))
+        self.cols_axis = rom.axes[d["cols"]]
         self.nrows, self.ncols = self.rows_axis.count, self.cols_axis.count
-        self.scale, self.unit, self.digits = float(d.get("scale", 1)), d.get("unit", ""), d.get("digits", 0)
+        self.scale, self.offset = float(d.get("scale", 1)), float(d.get("offset", 0))
+        self.unit, self.digits = d.get("unit", ""), d.get("digits", 0)
         self.confidence, self.evidence = d.get("confidence", "guess"), d.get("evidence", "")
+        self.readonly = d.get("readonly", False)
         self.size = SIZES[self.type]
-        self.max_raw = (1 << (8 * self.size)) - 1
+
+    def set_cols(self, key: str):
+        axis = self.rom.axes[key]
+        if axis.count != self.ncols:
+            raise RomError(f"axis {key} has {axis.count} points, the table {self.ncols} columns")
+        self.cols_axis = axis
+
+    def row_labels(self):
+        return self.rows_axis.labels()
+
+    def col_labels(self):
+        return self.cols_axis.labels()
+
+    @property
+    def row_unit(self):
+        return self.rows_axis.unit
+
+    @property
+    def col_unit(self):
+        return self.cols_axis.unit
+
+    def cell_type(self, r: int, c: int) -> str:
+        return self.type
 
     def cell_addr(self, r: int, c: int) -> int:
         return self.addr + (r * self.ncols + c) * self.size
@@ -63,18 +92,75 @@ class Table:
     def end(self) -> int:
         return self.cell_addr(self.nrows - 1, self.ncols - 1) + self.size
 
-    def get(self, r: int, c: int) -> int:
-        return self.rom.read(self.cell_addr(r, c), self.type)
+    def cell_scale(self, r: int, c: int):
+        return self.scale, self.offset, self.digits, self.unit
 
-    def get_in(self, data: bytes, r: int, c: int) -> int:
-        return Rom.read_from(data, self.cell_addr(r, c), self.type)
+    def get_in(self, data, r: int, c: int) -> int:
+        return Rom.read_from(data, self.cell_addr(r, c), self.cell_type(r, c))
+
+    def get(self, r: int, c: int) -> int:
+        return self.get_in(self.rom.data, r, c)
+
+    def orig(self, r: int, c: int) -> int:
+        return self.get_in(self.rom.original, r, c)
+
+    def value(self, r: int, c: int, raw: int) -> float:
+        k, o, _, _ = self.cell_scale(r, c)
+        return raw * k + o
+
+    def fmt(self, r: int, c: int, raw: int) -> str:
+        return f"{self.value(r, c, raw):.{self.cell_scale(r, c)[2]}f}"
+
+    def to_raw(self, r: int, c: int, x: float) -> int:
+        k, o, _, _ = self.cell_scale(r, c)
+        return int(round((x - o) / k))
 
     def set(self, r: int, c: int, raw: int):
-        raw = max(0, min(self.max_raw, int(round(raw))))
-        self.rom.write(self.cell_addr(r, c), self.type, raw)
+        top = (1 << (8 * SIZES[self.cell_type(r, c)])) - 1
+        raw = max(0, min(top, int(round(raw))))
+        self.rom.write(self.cell_addr(r, c), self.cell_type(r, c), raw)
 
     def grid(self) -> list[list[int]]:
         return [[self.get(r, c) for c in range(self.ncols)] for r in range(self.nrows)]
+
+
+class ListTable(Table):
+    """A list of entries (rows), each with named fields (columns) of their own type and scale."""
+    kind = "list"
+
+    def __init__(self, rom: "Rom", d: dict):
+        self.rom, self.d = rom, d
+        self.id, self.name, self.addr = d["id"], d["name"], num(d["addr"])
+        self.nrows, self.stride, self.fields = d["count"], d["stride"], d["fields"]
+        self.ncols = len(self.fields)
+        self.col_choices = []
+        self.unit, self.digits = "", 0
+        self.confidence, self.evidence = d.get("confidence", "guess"), d.get("evidence", "")
+        self.readonly = d.get("readonly", False)
+        self.type = self.fields[0]["type"]
+
+    def row_labels(self):
+        return self.d.get("row_names") or [str(i) for i in range(self.nrows)]
+
+    def col_labels(self):
+        return [f["name"] + (f" ({f['unit']})" if f.get("unit") else "") for f in self.fields]
+
+    row_unit = "entry"
+    col_unit = "field"
+
+    def cell_type(self, r, c):
+        return self.fields[c]["type"]
+
+    def cell_addr(self, r, c):
+        return self.addr + r * self.stride + self.fields[c]["offset"]
+
+    def end(self):
+        f = self.fields[-1]
+        return self.addr + (self.nrows - 1) * self.stride + f["offset"] + SIZES[f["type"]]
+
+    def cell_scale(self, r, c):
+        f = self.fields[c]
+        return float(f.get("scale", 1)), float(f.get("offset_value", 0)), f.get("digits", 0), f.get("unit", "")
 
 
 class Rom:
@@ -84,7 +170,8 @@ class Rom:
         self.path = path
         self.defn = definition or {}
         self.axes = {k: Axis(self, k, v) for k, v in self.defn.get("axes", {}).items()}
-        self.tables = [Table(self, t) for t in self.defn.get("tables", [])]
+        self.tables = [ListTable(self, t) if t.get("kind") == "list" else Table(self, t)
+                       for t in self.defn.get("tables", [])]
         self.undo: list[list[tuple[int, int, int]]] = []   # groups of (addr, old byte, new byte)
         self._group: list[tuple[int, int, int]] | None = None
 
@@ -177,6 +264,33 @@ class Rom:
     def changed_bytes(self) -> list[int]:
         return [i for i in range(len(self.data)) if self.data[i] != self.original[i]]
 
+    # ---------------------------------------------------------------- off-road options
+    def option_cells(self, opt: dict) -> list[tuple[Table, int, int, int]]:
+        """[(table, row, col, target raw), ...] the option changes; [] if it changes nothing in the ECU."""
+        out = []
+        for e in opt.get("edits", []):
+            t = self.table(e["table"])
+            out += [(t, r, e["field"], e["raw"]) for r in range(t.nrows)]
+        if opt.get("dtc_off"):
+            t = self.table("dtc_list")
+            for code in opt["dtc_off"]:
+                main, sub = (int(x) for x in code.split("-"))
+                rows = [r for r in range(t.nrows) if (t.orig(r, 0), t.orig(r, 1)) == (main, sub)]
+                if not rows:
+                    raise RomError(f"fault code {code} not in this image's list")
+                out += [(t, r, 0, 0) for r in rows] + [(t, r, 1, 0) for r in rows]
+        return out
+
+    def option_on(self, opt: dict) -> bool:
+        cells = self.option_cells(opt)
+        return bool(cells) and all(t.get(r, c) == raw for t, r, c, raw in cells)
+
+    def set_option(self, opt: dict, on: bool):
+        self.begin()
+        for t, r, c, raw in self.option_cells(opt):
+            t.set(r, c, raw if on else t.orig(r, c))
+        self.commit()
+
     # ---------------------------------------------------------------- saving
     def save_as(self, path: str) -> dict:
         path = os.path.abspath(path)
@@ -200,8 +314,9 @@ class Rom:
                 for c in range(t.ncols):
                     old, new = t.get_in(self.original, r, c), t.get_in(out, r, c)
                     if old != new:
-                        changes.append({"table": t.id, "rpm": t.rows_axis.labels()[r],
-                                         "col": t.cols_axis.labels()[c], "old": old, "new": new})
+                        changes.append({"table": t.id, "row": t.row_labels()[r], "col": t.col_labels()[c],
+                                        "old": t.fmt(r, c, old), "new": t.fmt(r, c, new), "old_raw": old,
+                                        "new_raw": new})
         info = {"saved": time.strftime("%Y-%m-%d %H:%M:%S"), "from": self.path,
                 "from_sha256": hashlib.sha256(self.original).hexdigest(),
                 "sha256": hashlib.sha256(out).hexdigest(), "checksum_byte": f"{out[self.checksum_addr()]:02X}",
