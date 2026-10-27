@@ -4,6 +4,11 @@ Read, back up and later remap the stock Keihin ECU of Neil's **2012 Honda CBR250
 (Honda K-line), with a dedicated ESP32-C3 as a USB ↔ K-line bridge and Python on the laptop. README.md has the
 research, safety rules, plan, wiring and commands.
 
+Neil's tuning goal (2026-10-27): pod filter for better response and power, and he wants the emissions gear off.
+Agreed approach: the fuelling must be corrected for the pod filter (the bike already reads lean). Removing or
+disabling emissions equipment (O2 closed loop, PAIR valve, cat, EVAP) is only legal for an off-road/track bike, not
+on a registered road bike, so ask how the bike will be used before working on that part.
+
 Forked from the HondaDLC scanner (`Documents\HondaDLC`, github neilson66/HondaDLC). **Never edit or push HondaDLC
 from here.** Origin: https://github.com/neilson66/CBR250r-remap (Neil creates repos by hand; no gh CLI on this PC).
 
