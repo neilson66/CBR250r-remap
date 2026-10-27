@@ -68,6 +68,20 @@ to 0 mod 256. Faults: `72 05 74 <n>` current / `73 <n>` past (layout a guess). C
 - The bike "runs badly": ask Neil for the symptoms; diagnose from the session logs (marks, fault codes, sensor
   plausibility: temperatures, throttle zero, MAP vs rpm, battery, injector/advance).
 
+## Phone app first try (2026-10-27): NOT WORKING at the bike
+Neil reported "it's not working" with the WiFi firmware on the C6 at the bike; no details yet (ask: does the
+CBR250R-DLC WiFi appear, does the page load, what do the status line and Messages say?). Debug from the laptop over
+USB with the board still on the bike:
+1. Open the port, send "\n", then `I`: prints status, SD, and the last 10 messages without taking the K-line. Send
+   nothing else for 8 s first, or the board is in USB-bridge mode.
+2. Then `python pc/honda_dlc.py COMx check` (this takes the K-line: bridge mode).
+On the bench (interface powered, no ECU) check steps 1-4 passed with this firmware. Step 5 failed with
+`BAD_ECHO byte 0 sent FE got F9`: the first byte after the wake-up pulse came back corrupt. The wake-up code is
+unchanged from the version that worked on the bike, but `readByte()` now yields with `vTaskDelay(1)` and the ECU
+task shares the CPU with WiFi; suspect timing, and compare with the PC app's `W` on the same board. If needed, add a
+short delay after `klineBegin()` in `wakeInit()` (the UART re-attach can produce a glitch byte) before sending
+`FE 04 FF FF`.
+
 ## Workshop manual
 Neil's copy: `D:\workshopmanual-cbr250r_2011-29032019-1427.pdf` (499 scanned pages, no text: render pages with
 PyMuPDF and read the images). PDF page ≈ manual page + 111 for section 5 early pages, + 110 from about 5-50.
