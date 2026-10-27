@@ -5,7 +5,7 @@ Read, back up and later remap the stock Keihin ECU of Neil's **2012 Honda CBR250
 research, safety rules, plan, wiring and commands.
 
 Forked from the HondaDLC scanner (`Documents\HondaDLC`, github neilson66/HondaDLC). **Never edit or push HondaDLC
-from here.** This repo has no origin until Neil creates `neilson66/CBR250R-Remap` by hand (no gh CLI on this PC).
+from here.** Origin: https://github.com/neilson66/CBR250r-remap (Neil creates repos by hand; no gh CLI on this PC).
 
 ## Safety rules (always)
 - **Stage 1 is read only.** Never send erase/write/recovery packets (`7B`, `7D`, `7E`, `72 .. 00 F1`, `27` other
