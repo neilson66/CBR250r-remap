@@ -5,9 +5,10 @@ Read, back up and later remap the stock Keihin ECU of Neil's **2012 Honda CBR250
 research, safety rules, plan, wiring and commands.
 
 Neil's tuning goal (2026-10-27): pod filter for better response and power, and he wants the emissions gear off.
-Agreed approach: the fuelling must be corrected for the pod filter (the bike already reads lean). Removing or
-disabling emissions equipment (O2 closed loop, PAIR valve, cat, EVAP) is only legal for an off-road/track bike, not
-on a registered road bike, so ask how the bike will be used before working on that part.
+Agreed approach: the fuelling must be corrected for the pod filter (the bike already reads lean). Neil says the bike
+is for **off-road use**, so removing the emissions gear is in scope: PAIR (block-off plates + solenoid), cat (exhaust),
+O2 closed loop (disable in the map once found, rather than unplugging the sensor and living with DTC 21-1), EVAP if
+fitted. Tune with a wideband O2 sensor logged alongside the ECU data.
 
 Forked from the HondaDLC scanner (`Documents\HondaDLC`, github neilson66/HondaDLC). **Never edit or push HondaDLC
 from here.** Origin: https://github.com/neilson66/CBR250r-remap (Neil creates repos by hand; no gh CLI on this PC).

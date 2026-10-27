@@ -84,6 +84,14 @@ Woolich tools (Woolich support for the MC41 not checked).
    recovery sequence on the spare ECU. Only then a small, reversible change.
 6. **Stage 5, write to the bike's ECU:** only with Neil's say-so, every safety rule above met, unchanged
    image first.
+7. **Stage 6, the off-road tune** (the goal: pod filter, emissions gear off, better response and power):
+   - Hardware: pod filter, exhaust without the cat, PAIR block-off plates (unplugging the PAIR solenoid may set a
+     fault code: check the manual's DTC list first), EVAP canister off if fitted.
+   - A wideband O2 sensor and controller (0-5 V output) in the exhaust, logged by the ESP32 alongside rpm, throttle
+     and MAP, so the fuel is set from measured air-fuel ratio, not guesses. Its 0-5 V output needs a divider to
+     reach the ESP32's 3.3 V ADC.
+   - Map changes: more fuel to suit the pod and exhaust, O2 closed loop off, then idle and throttle response. One
+     change at a time, logged before and after.
 
 ## Hardware: the remap bridge
 Same two-transistor interface as the scanner (2 × 2N3904, 1k/1k/47k/10k/10k, 1N4148), on an **ESP32-C3** (COM15
