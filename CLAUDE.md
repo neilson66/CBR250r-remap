@@ -5,15 +5,25 @@ Goal right now: **get it talking on the bike, then work out why the bike is runn
 See README.md for parts, wiring and bring-up. GitHub: neilson66/HondaDLC.
 
 ## Layout
-- `firmware/HondaKLine/HondaKLine.ino`: ESP32 USB-serial ↔ K-line bridge. It handles only timing (wake-up pulse,
-  echo removal, one reply frame). Line commands at 115200: `P` ping, `W` wake+init, `T <hex>` send with checksum
-  and read the reply, `B <hex>` send raw, bench tests `E` echo, `L` line level, `D 0`/`D 1` hold low/release
-  (`L` works while held). Pins are chosen per chip with `CONFIG_IDF_TARGET_*`.
+- `firmware/HondaKLine/HondaKLine.ino`: two modes. **Phone/standalone:** WiFi hotspot `CBR250R-DLC` (password
+  `hondacbr250`), page at http://192.168.4.1 (`page.h`: live cards, trend pens with in-chart cursor read-out, fault
+  codes with names, clear, dump, marks, save-to-phone CSV, SD log downloads); an ECU task wakes the ECU every 3 s
+  until it answers, then polls table 0x11 (~12/s) + extras every 10th sample and logs to microSD `/S0001/`
+  (`live.csv` with raw hex only: `time,elapsed_s,mark,raw_11,raw_XX…`, `faults.txt`, `info.txt`, `dump.json`). The phone
+  sends its clock (`/api/time`) so `time` fills in. **USB bridge:** any USB command hands the K-line to the PC
+  until 8 s after the last one. Line commands at 115200: `P` ping, `W` wake+init, `T <hex>` send with checksum and
+  read the reply, `B <hex>` send raw, bench tests `E` echo, `L` line level, `D 0`/`D 1` hold low/release (`L` works
+  while held), `I` status + recent messages (doesn't take the K-line). Pins are chosen per chip with
+  `CONFIG_IDF_TARGET_*`; SD only on the C6 (SCLK 7, MISO 5, MOSI 6, CS 4; LCD CS 14 held high).
+  Opening the port from a PC can produce a junk line: send "\n" first (the PC app does).
+- `pc/mock_board.py`: pretend board serving `page.h` with simulated data at http://localhost:8765, to test the phone
+  page without hardware. Keep `page.h`'s `F`/`DTC` tables in step with `TABLE11`/`DTC_NAMES` in `honda_dlc.py`.
 - `pc/honda_dlc.py`: protocol, `SerialLink`, `SimLink` (demo ECU), `Ecu` (live, fault tables, clear, dump),
   table 0x11 field layout (`TABLE11`), CLI: `python honda_dlc.py <COMx|demo> check|live|dump|dtc|raw <hex>`.
 - `pc/dlc_gui.py`: one-page window (sensors with big live values + trend + raw bytes + messages). Every connection
   logs to `logs/<date_time>/` (`live.csv`, `faults.txt`, `info.txt`, `dump.json`). Mark button/space bar.
-  Clear codes button. `pc/trend.py`: the trend chart (pens, own scales, hover, pan/zoom, Open log).
+  Clear codes button. `pc/trend.py`: the trend chart (pens, own scales, hover, pan/zoom, Open log; also opens the
+  board's SD `live.csv`, decoding `raw_11`).
 - `docs/wiring.svg` (+ `wiring.png` rendered from it with headless Edge).
 
 ## Hardware

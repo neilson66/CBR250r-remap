@@ -150,7 +150,15 @@ class TrendView(ttk.Frame):
                 t = to_float(row.get("elapsed_s"))
                 if t is None:
                     continue
-                s.add(t, {f.name: to_float(row.get(f"{f.name} ({f.unit})")) for f in TABLE11}, row.get("mark", ""))
+                vals = {f.name: to_float(row.get(f"{f.name} ({f.unit})")) for f in TABLE11}
+                if all(v is None for v in vals.values()) and row.get("raw_11"):
+                    # Logs from the board's SD card hold only the raw bytes: decode them here.
+                    try:
+                        raw = bytes.fromhex(row["raw_11"])
+                        vals = {f.name: f.value(raw) for f in TABLE11}
+                    except ValueError:
+                        pass
+                s.add(t, vals, row.get("mark", ""))
         self.log = s
         self.window.set("All")
         self.view_end = None

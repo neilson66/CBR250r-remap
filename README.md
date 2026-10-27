@@ -83,6 +83,17 @@ battery voltage (the ECU pulls it up). If Y reads 0 V, stop.
    pass. If init fails, swap nothing else first: check that the K-line is on the right DLC pin.
 4. Then `dlc_gui.py` → Connect. Blip the throttle and watch which raw bytes change.
 
+## Phone app (the board on its own)
+Powered on the bike (12 V→USB-C adaptor) the board wakes the ECU by itself, logs every session to its microSD card
+(`/S0001/live.csv` etc.) and runs a WiFi hotspot:
+
+- WiFi **CBR250R-DLC**, password **hondacbr250**, then open **http://192.168.4.1** (add it to the home screen).
+- Same as the PC app: sensor cards (tap to add a pen), trend (tap/drag for a cursor read-out), fault codes with
+  descriptions, Clear codes, Dump tables, a big **MARK** button, **Save to phone** (CSV of what the page has seen) and
+  **SD logs** (download any session). The PC trend's **Open log…** reads the SD `live.csv` files too.
+- Plugging in the laptop hands the K-line to the PC app; the board takes it back 8 s after the PC goes quiet.
+- `python pc/mock_board.py` serves the page with simulated data at http://localhost:8765 for testing.
+
 ## Using the app
 One full-screen page: live values on the left, trend in the middle, raw bytes and messages along the bottom.
 - **Sensors**: big live values; tick any sensors to plot them together as pens, each on its own scale (or tick Auto-scale). Hover to
