@@ -8,7 +8,9 @@ Neil's tuning goal (2026-10-27): pod filter for better response and power, and h
 Agreed approach: the fuelling must be corrected for the pod filter (the bike already reads lean). Neil says the bike
 is for **off-road use**, so removing the emissions gear is in scope: PAIR (block-off plates + solenoid), cat (exhaust),
 O2 closed loop (disable in the map once found, rather than unplugging the sensor and living with DTC 21-1), EVAP if
-fitted. Tune with a wideband O2 sensor logged alongside the ECU data.
+fitted. Tune with a wideband O2 sensor logged alongside the ECU data. Neil already has a wideband (make/model and
+output type not yet known: ask). Plan: its 0-5 V output → divider → a free ADC1 pin (C3: GPIO0/1/3; GPIO4/5 are the
+K-line), controller signal ground to the ESP32 GND, logged with rpm/TPS/MAP.
 
 Forked from the HondaDLC scanner (`Documents\HondaDLC`, github neilson66/HondaDLC). **Never edit or push HondaDLC
 from here.** Origin: https://github.com/neilson66/CBR250r-remap (Neil creates repos by hand; no gh CLI on this PC).
