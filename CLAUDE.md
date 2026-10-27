@@ -40,11 +40,29 @@ to 0 mod 256. Faults: `72 05 74 <n>` current / `73 <n>` past (layout a guess). C
   ESP32/DLC G. Wake-up, init, table 0x11 and the fault tables all answer. Key on, engine off, table 0x11 read
   `00 00 19 00 96 40 98 40 93 64 FF FF 7D 00 00 00 80 55 28 6E`, which decodes sensibly with `TABLE11` (0 rpm,
   TPS 0.49 V, coolant/air 24 °C, MAP 100 kPa, battery 12.5 V); still confirm throttle/rpm bytes move. Bytes 17-19 unknown.
-- Fault rows: byte 0 unknown, then (main, sub) pairs. Current: 54-2. Past: 1-2, 8-1, 9-2, 12-1, 54-1, 54-2.
+- Fault rows: byte 0 unknown, then (main, sub) pairs. Current: 54-2 (bank angle sensor is physically missing).
+  Past: 1-2, 8-1, 9-2, 12-1, 54-1, 54-2.
+- First log (logs/20261027_103451, cold, on the stand): stalls whenever the throttle closes, starts only with
+  throttle open, battery 12.4-13.0 V running (not charging). Steady at 12 % throttle is fine (2400 ± 80 rpm).
+- Candidate decodes from that log (unconfirmed): table 0x11 bytes 10-11 always FF; byte 17 and bytes 18-19 (16-bit)
+  fall smoothly as the coolant warms and are higher with the engine stopped (looks like an idle-air / warm-up
+  command). Table 0x20 byte 0 is FF for the first ~30 s of running, then 0x02-0x23 (looks like the O2 sensor; the
+  steady reading 0x04-0x06 would be lean if the scale is 5 V/256), byte 1 always 0x80 (trim at 1.0?). Table D0 bytes
+  11-12 = crank period (rpm ≈ 2,460,000 / value). Table D1 byte 4: 00 stopped, 01 running, 05 on throttle openings.
 - `check` steps: 1 bridge, 2 line idles high, 3 hold-low seen, 4 echo, 5 ECU init, 6 table 0x11. On the bench
   (9 V battery for the 12 V, no ECU) 1-4 should pass.
 - The bike "runs badly": ask Neil for the symptoms; diagnose from the session logs (marks, fault codes, sensor
   plausibility: temperatures, throttle zero, MAP vs rpm, battery, injector/advance).
+
+## Workshop manual
+Neil's copy: `D:\workshopmanual-cbr250r_2011-29032019-1427.pdf` (499 scanned pages, no text: render pages with
+PyMuPDF and read the images). PDF page ≈ manual page + 111 for section 5 early pages, + 110 from about 5-50.
+- 5-3 specs: idle 1,400 ± 100 rpm, fuel pressure at idle 294 kPa, pump flow 69.2 cm³ / 10 s, injector 11-13 Ω,
+  throttle body GQ9JA. 5-5 symptom table. 5-13 erase DTCs with the SCS connector. 5-14 DTC index (codes are
+  main-sub as decoded). 5-15 sensor unit (MAP + TP + IAT, one 5P connector). 5-50 throttle valve fully closed
+  position reset (needed after a sensor unit / throttle body change). 17-7 charging test: warm, high beam,
+  5,000 rpm, battery V < charging V < 15.5 V.
+- Parts ordered (2026-10-27): throttle body, fuel pump with regulator, IACV, injector. Bank angle sensor is missing.
 
 ## Plan after it talks (agreed)
 Always-on unit on the bike: C6 powered by a 12 V → USB-C adaptor fed from the key-switched Bl/Bu (1 A fuse), ESP32

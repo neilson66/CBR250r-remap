@@ -180,6 +180,17 @@ TABLE11 = [
 ]
 
 
+# Fault codes, from the CBR250R workshop manual DTC index (page 5-14).
+DTC_NAMES = {
+    "1-1": "MAP sensor low voltage", "1-2": "MAP sensor high voltage",
+    "7-1": "coolant temp sensor low voltage", "7-2": "coolant temp sensor high voltage",
+    "8-1": "throttle sensor low voltage", "8-2": "throttle sensor high voltage",
+    "9-1": "intake air temp sensor low voltage", "9-2": "intake air temp sensor high voltage",
+    "12-1": "fuel injector circuit", "21-1": "O2 sensor", "29-1": "IACV circuit", "33-2": "ECM EEPROM",
+    "54-1": "bank angle sensor low voltage", "54-2": "bank angle sensor high voltage",
+}
+
+
 def decode(fields, data: bytes) -> dict:
     out = {}
     for f in fields:
@@ -244,7 +255,8 @@ class Ecu:
         for _, payload in rows:
             for j in range(1, len(payload) - 1, 2):
                 if payload[j]:
-                    codes.append(f"{payload[j]}-{payload[j + 1]}")
+                    code = f"{payload[j]}-{payload[j + 1]}"
+                    codes.append(f"{code} ({DTC_NAMES[code]})" if code in DTC_NAMES else code)
         return codes
 
     def dump(self, tables=range(0x100), progress=None) -> dict:
