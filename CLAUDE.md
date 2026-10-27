@@ -44,6 +44,10 @@ to 0 mod 256. Faults: `72 05 74 <n>` current / `73 <n>` past (layout a guess). C
   Past: 1-2, 8-1, 9-2, 12-1, 54-1, 54-2.
 - First log (logs/20261027_103451, cold, on the stand): stalls whenever the throttle closes, starts only with
   throttle open, battery 12.4-13.0 V running (not charging). Steady at 12 % throttle is fine (2400 ± 80 rpm).
+- Second log (logs/20261027_104155, 48 → 70 °C, revved to 6,800 rpm): **Clear codes works on the MC41** (`72 05 60 03`
+  → `02 05 60 01 98`; past codes went to none, then only 54-2 came back). Same stalls on closing the throttle.
+  Battery never above 12.9 V even at 3,500-6,800 rpm (not charging). Table 0x20 byte 0 went FF → 0x26 → 0x01-0x08
+  and stayed low as it warmed (lean, if it is the O2 sensor).
 - Candidate decodes from that log (unconfirmed): table 0x11 bytes 10-11 always FF; byte 17 and bytes 18-19 (16-bit)
   fall smoothly as the coolant warms and are higher with the engine stopped (looks like an idle-air / warm-up
   command). Table 0x20 byte 0 is FF for the first ~30 s of running, then 0x02-0x23 (looks like the O2 sensor; the
