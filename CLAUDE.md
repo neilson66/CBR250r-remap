@@ -35,6 +35,9 @@ from here.** Origin: https://github.com/neilson66/CBR250r-remap (Neil creates re
   Flashed to the C3 on COM15 on 2026-10-27 (answers P and I; not yet run against the ECU).
 - `pc/honda_dlc.py`: shared K-line base from the scanner (`SerialLink` accepts both bridges; `query(pkt, len_pos)`),
   `Ecu`, `TABLE11`, `DTC_NAMES`, `check`.
+- `pc/map_editor.py` (Tkinter, files only), `pc/rom.py` (Rom/Table/Axis, edits only inside defined tables, save_as
+  fixes the checksum and refuses backups/, reference/ and the opened file), `pc/definitions/KYJA203.json` (axes,
+  tables, off-road options with status "not found"; matched by the Keihin code at 0xDFF0).
 - `pc/remap.py`: `check | id | backup --yes | verify <bin> | compare <a> <b>`, `demo` port = pretend ECU with a
   flash image. Backups to `backups/<time>_backup/` (git-ignored).
 - `reference/stock_bins/38770-KYJ-922.bin`, `-971.bin`: from Adeen117/HondaECU `bins/CBR250R_KYJ_2010-2014`
@@ -57,6 +60,12 @@ Flash (from HondaECU source, **not tried on this bike**):
   0xC528-0xC545 (8 × 4 bytes: `00 33 71 C7` vs `03 FE 71 C7` …), 0xDFEF. Candidate calibration areas, meaning unknown.
 - Vectors at 0x0000 are 16-bit big-endian (reset 0x0082): looks like a Renesas H8/300H Tiny with 56 KB flash
   (H8/3687?). Unconfirmed until the chip marking is read.
+
+## Maps found (2026-10-27, in pc/definitions/KYJA203.json)
+rpm axis 0xA004 (29 u16, × 18000/65536 = 800…10500 exactly), TPS axis 0xA03E (22 u16, 0-1023), MAP axis? 0xA06A
+(22 u8). Fuel A 0xA080 and Fuel B 0xA57C (29×22 u16), Ignition A 0xAA78 and B 0xACF6 (29×22 u8), empty slot 0xAF74.
+Evidence: HondaDLC logs (rpm ≥ 1800) interpolated on rpm × TPS: ignition A vs table 0x11 byte 16 r = 0.83, fuel A vs
+bytes 14-15 r = 0.76. Units of fuel/ignition values unknown. Off-road option flags not found yet.
 
 ## Status
 - 2026-10-27: project started, research done, bridge firmware flashed on the C3 (COM15), `remap.py` tested only

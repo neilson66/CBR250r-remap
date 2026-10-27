@@ -77,7 +77,7 @@ Woolich tools (Woolich support for the MC41 not checked).
 3. **Stage 2, bench rig:** spare ECU (a used KYJ ECU is cheap) on the bench with a 12 V 3 A supply, so tests and
    any first write happen on a spare, not the bike's ECU. Bench harness: ECM 33P pin 1 IGP (+12 V switched),
    ground, pin 30 K-line (pin numbers from our wiring trace; check the ECU's other power/ground pins in the manual).
-4. **Stage 3, maps (offline):** a viewer on the laptop: hex + table view, the known calibration areas above,
+4. **Stage 3, maps (offline):** (started: `map_editor.py`, four maps found) a viewer on the laptop: hex + table view, the known calibration areas above,
    compare images, heat-map tables, and a definition file we build up (address, size, axes, scaling, with the
    evidence for each). Then a TunerPro XDF of what is known.
 5. **Stage 4, recovery path (on the spare ECU):** prove a full write of the *unchanged* stock image and the
@@ -143,7 +143,36 @@ Extras for the remap work:
 - `pc/remap.py`: `check`, `id`, `backup --yes`, `verify <bin>`, `compare <a> <b>`; `demo` instead of the port runs
   against a pretend ECU. Backups go to `backups/<time>_backup/` (`read1.bin`, `read2.bin`, `flash.bin`,
   `flash.bin.sha256`, `info.json`), not committed to git.
+- `pc/map_editor.py`: the map editor (below). `pc/rom.py`: image + definition library. `pc/definitions/KYJA203.json`:
+  the map definition, every entry with its evidence and confidence.
 - `reference/stock_bins/`: the two stock images from HondaECU (local only, not committed).
+
+## Map editor
+```
+python pc/map_editor.py reference/stock_bins/38770-KYJ-922.bin
+```
+Works on image files only; it never talks to the ECU. Heat-map grid of each table (rpm down the side, throttle or MAP
+across the top), select cells by click/drag, type a value or use -5/-1/+1/+5 %, Ctrl+Z undo, Revert cells. Compare…
+marks cells that differ from another image (purple corner). Explorer shows any address as a grid to hunt for more
+tables. Save as… writes a new .bin with the checksum fixed plus a `.changes.json` list, and refuses to overwrite the
+opened file or anything in `backups/` / `reference/`. The off-road options (O2 closed loop, PAIR, fault codes) are
+listed but disabled until their flags are found.
+
+![Map editor](docs/map_editor.png)
+
+Maps found so far in KYJA203 (both stock images use the same layout):
+
+| Table | Address | Size | Confidence | Evidence |
+|---|---|---|---|---|
+| rpm axis | 0xA004 | 29 × u16 | likely | × 18000/65536 gives round rpm 800 … 10,500 |
+| throttle axis | 0xA03E | 22 × u16 | likely | 0-1023 (10-bit TPS counts) |
+| MAP axis | 0xA06A | 22 × u8 | guess | 0-255 after the TPS axis |
+| Fuel A (rpm × throttle) | 0xA080 | 29 × 22 u16 | likely | logged injector time vs map r = 0.76 |
+| Fuel B (rpm × MAP) | 0xA57C | 29 × 22 u16 | guess | same shape, rises across MAP |
+| Ignition A (rpm × throttle) | 0xAA78 | 29 × 22 u8 | likely | logged advance vs map r = 0.83 |
+| Ignition B (rpm × MAP) | 0xACF6 | 29 × 22 u8 | guess | the table that differs 922 vs 971 |
+
+Units of the fuel and ignition values aren't known yet (raw numbers). 0xAF74-0xB1F1 is an empty (FF) slot the same size.
 
 ```
 pip install pyserial
