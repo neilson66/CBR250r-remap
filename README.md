@@ -92,6 +92,10 @@ Woolich tools (Woolich support for the MC41 not checked).
      reach the ESP32's 3.3 V ADC.
    - Map changes: more fuel to suit the pod and exhaust, O2 closed loop off, then idle and throttle response. One
      change at a time, logged before and after.
+   - Intake runner idea (Neil): a longer runner between the pod and the throttle body moves the torque peak lower
+     (less top end). Same bore as the throttle body, smooth inside, bellmouth on the open end, swappable lengths.
+     Compare lengths with logged roll-ons in one gear (power is roughly rpm × rpm rise rate), with the wideband
+     checking the fuel for each length.
 
 ## Hardware: the remap bridge
 Same two-transistor interface as the scanner (2 × 2N3904, 1k/1k/47k/10k/10k, 1N4148), on an **ESP32-C3** (COM15
