@@ -1,4 +1,6 @@
-"""Honda PGM-FI K-line diagnostics through the ESP32 bridge (firmware/HondaKLine).
+"""Honda PGM-FI K-line base: protocol, links and the diagnostic tables (shared with the HondaDLC scanner).
+
+Talks through the ESP32 USB bridge (firmware/RemapBridge). pc/remap.py builds the ECU identify/backup on this.
 
 Protocol (Honda's own K-line, 10400 baud, as reverse-engineered by the community):
   wake-up      K-line low 70 ms, high 130 ms                     (done by the firmware)
@@ -64,9 +66,9 @@ class SerialLink:
                 reply = self._cmd("P")
             except DlcError:
                 continue
-            if reply.startswith("OK HONDA-KLINE"):
+            if reply.startswith(("OK HONDA-REMAP", "OK HONDA-KLINE")):
                 break
-        if not reply.startswith("OK HONDA-KLINE"):
+        if not reply.startswith(("OK HONDA-REMAP", "OK HONDA-KLINE")):
             raise DlcError(f"no bridge on {port} (got {reply!r})")
 
     def _cmd(self, line: str) -> str:
@@ -82,9 +84,10 @@ class SerialLink:
             raise DlcError(f"wake-up failed: {reply}")
         return bytes.fromhex(reply[2:])
 
-    def query(self, packet: bytes) -> bytes:
-        """Send packet (without checksum) and return the reply frame."""
-        reply = self._cmd("T " + hexs(packet))
+    def query(self, packet: bytes, len_pos: int = 1) -> bytes:
+        """Send packet (without checksum) and return the reply frame. len_pos: where the reply's length byte is
+        (1 for most frames, 3 for the 82 82 00 flash reads; needs the RemapBridge firmware)."""
+        reply = self._cmd("T " + hexs(packet) if len_pos == 1 else f"Q {len_pos} " + hexs(packet))
         if not reply.startswith("R "):
             raise DlcError(reply)
         return bytes.fromhex(reply[2:])
@@ -314,7 +317,7 @@ def check(port: str) -> int:
         ecu = Ecu(link)
         data = ecu.read_table(0x11)
         print("6. table 0x11 ...", hexs(data))
-        print("It's talking. Run 'live', 'dtc' or 'dump', or open dlc_gui.py.")
+        print("It's talking. Next: python pc/remap.py", port, "id")
         return 0
     finally:
         link.close()

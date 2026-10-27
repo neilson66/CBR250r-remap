@@ -1,102 +1,65 @@
-# Honda DLC Scanner — notes for Claude
+# CBR250R-Remap: notes for Claude
 
-Reads live data and fault codes from Neil's **2012 Honda CBR250R (MC41)** through its 4-pin red DLC (Honda K-line).
-Goal right now: **get it talking on the bike, then work out why the bike is running badly** from the logs.
-See README.md for parts, wiring and bring-up. GitHub: neilson66/HondaDLC.
+Read, back up and later remap the stock Keihin ECU of Neil's **2012 Honda CBR250R (MC41)** over its 4-pin red DLC
+(Honda K-line), with a dedicated ESP32-C3 as a USB ↔ K-line bridge and Python on the laptop. README.md has the
+research, safety rules, plan, wiring and commands.
+
+Forked from the HondaDLC scanner (`Documents\HondaDLC`, github neilson66/HondaDLC). **Never edit or push HondaDLC
+from here.** This repo has no origin until Neil creates `neilson66/CBR250R-Remap` by hand (no gh CLI on this PC).
+
+## Safety rules (always)
+- **Stage 1 is read only.** Never send erase/write/recovery packets (`7B`, `7D`, `7E`, `72 .. 00 F1`, `27` other
+  than `27 .. E0`) to a real ECU. The firmware refuses them (`ALLOW_WRITE = false` in `RemapBridge.ino`); don't
+  change that, add a bypass, or send them with `B`, until Neil explicitly asks and every condition below holds.
+- Writing needs: a verified backup (two identical reads, checksum OK, SHA-256, copied off the laptop), a recovery
+  path proven on a **spare** ECU, and a bench supply ≥ 2.5 A (or battery on a charger), engine off. First write is
+  the unchanged stock image, on the spare.
+- Never guess map addresses: every table in a definition needs evidence (stock-image diffs, code that reads it,
+  published definition) recorded next to it.
+- Ask before flashing a board Neil hasn't named. He named the **ESP32-C3 on COM15** for the remap bridge.
 
 ## Layout
-- `firmware/HondaKLine/HondaKLine.ino`: two modes. **Phone/standalone:** WiFi hotspot `CBR250R-DLC` (password
-  `hondacbr250`), page at http://192.168.4.1 (`page.h`: live cards, trend pens with in-chart cursor read-out, fault
-  codes with names, clear, dump, marks, save-to-phone CSV, SD log downloads); an ECU task wakes the ECU every 3 s
-  until it answers, then polls table 0x11 (~12/s) + extras every 10th sample and logs to microSD `/S0001/`
-  (`live.csv` with raw hex only: `time,elapsed_s,mark,raw_11,raw_XX…`, `faults.txt`, `info.txt`, `dump.json`). The phone
-  sends its clock (`/api/time`) so `time` fills in. **USB bridge:** any USB command hands the K-line to the PC
-  until 8 s after the last one. Line commands at 115200: `P` ping, `W` wake+init, `T <hex>` send with checksum and
-  read the reply, `B <hex>` send raw, bench tests `E` echo, `L` line level, `D 0`/`D 1` hold low/release (`L` works
-  while held), `I` status + recent messages (doesn't take the K-line). Pins are chosen per chip with
-  `CONFIG_IDF_TARGET_*`; SD only on the C6 (SCLK 7, MISO 5, MOSI 6, CS 4; LCD CS 14 held high).
-  Opening the port from a PC can produce a junk line: send "\n" first (the PC app does).
-- `pc/mock_board.py`: pretend board serving `page.h` with simulated data at http://localhost:8765, to test the phone
-  page without hardware. Keep `page.h`'s `F`/`DTC` tables in step with `TABLE11`/`DTC_NAMES` in `honda_dlc.py`.
-- `pc/honda_dlc.py`: protocol, `SerialLink`, `SimLink` (demo ECU), `Ecu` (live, fault tables, clear, dump),
-  table 0x11 field layout (`TABLE11`), CLI: `python honda_dlc.py <COMx|demo> check|live|dump|dtc|raw <hex>`.
-- `pc/dlc_gui.py`: one-page window (sensors with big live values + trend + raw bytes + messages). Every connection
-  logs to `logs/<date_time>/` (`live.csv`, `faults.txt`, `info.txt`, `dump.json`). Mark button/space bar.
-  Clear codes button. `pc/trend.py`: the trend chart (pens, own scales, hover, pan/zoom, Open log; also opens the
-  board's SD `live.csv`, decoding `raw_11`).
-- `docs/wiring.svg` (+ `wiring.png` rendered from it with headless Edge).
+- `firmware/RemapBridge/RemapBridge.ino`: USB-only bridge, 115200 line commands: `P` → `OK HONDA-REMAP 1`, `I` info
+  (`write=LOCKED`), `W` wake+init, `T <hex>` send with checksum + read reply (length at byte 1), `Q <n> <hex>` same
+  with the reply length at byte n (3 for `82 82 00` flash reads), `B <hex>` raw, `E` echo, `L` level, `D 0/1`.
+  Pins per chip via `CONFIG_IDF_TARGET_*` (C3 TX 4 / RX 5, C6 2/3, S3 1/2). FQBN C3: `esp32:esp32:esp32c3:CDCOnBoot=cdc`.
+  arduino-cli: `C:\Program Files\Arduino IDE\resources\app\lib\backend\resources\arduino-cli.exe`.
+  Flashed to the C3 on COM15 on 2026-10-27 (answers P and I; not yet run against the ECU).
+- `pc/honda_dlc.py`: shared K-line base from the scanner (`SerialLink` accepts both bridges; `query(pkt, len_pos)`),
+  `Ecu`, `TABLE11`, `DTC_NAMES`, `check`.
+- `pc/remap.py`: `check | id | backup --yes | verify <bin> | compare <a> <b>`, `demo` port = pretend ECU with a
+  flash image. Backups to `backups/<time>_backup/` (git-ignored).
+- `reference/stock_bins/38770-KYJ-922.bin`, `-971.bin`: from Adeen117/HondaECU `bins/CBR250R_KYJ_2010-2014`
+  (git-ignored, Honda's code: don't commit or publish).
+- Python: `C:\Users\neil6\Documents\KinectScanner\.venv\Scripts\python.exe` (has pyserial).
 
-## Hardware
-- Interface: two 2N3904s (E-B-C, flat face towards you). Q1: TX → 1k → base, collector on K-line. Q2: K-line →
-  47k/10k divider → base, collector → RX with 10k pull-up to 3V3. K-line pull-up: Bl/Bu 12 V → 1N4148 → 1k.
-  Both stages invert, so the firmware uses UART inversion (`KLINE_INVERTED`).
-- DLC wire colours (traced to ECM 33P on the wiring diagram): **Y = K-line (ECM 30)**, **Bl/Bu = 12 V key-on
-  (ECM 1, IGP)**, **G = ground**, **Bu = SCS (ECM 15)**, not connected.
-- Main board: **Waveshare ESP32-C6-LCD-1.47**, TX GPIO2, RX GPIO3 (avoid 12/13 USB, 9 BOOT, 4-7 SD/LCD).
-  Spares, also flashed: Waveshare ESP32-S3-LCD-1.47 with its LCD removed (TX 1, RX 2), ESP32-C3 (TX 4, RX 5).
-  COM port numbers differ per PC.
-- Flashing: Arduino IDE / arduino-cli, esp32 core 3.x. FQBNs: `esp32:esp32:esp32c6:CDCOnBoot=cdc`,
-  `esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=16M`, `esp32:esp32:esp32c3:CDCOnBoot=cdc`.
-  After flashing the S3/C6 the chip can stay in the bootloader (no reply to `P`): reset it with
-  `esptool --port COMx --before no-reset --after watchdog-reset read-mac`, or unplug and replug.
+## Protocol
+Diagnostics (confirmed on this bike via HondaDLC): 10400 8N1, wake 70 ms low / 130 ms high, `FE 04 FF FF`, then
+`72 05 00 F0 99` → `02 04 00 FA`; tables `72 05 71 <t>`; clear codes `72 05 60 03` works. All frames sum to 0.
+Flash (from HondaECU source, **not tried on this bike**):
+- read: after a key off → on cycle, wake/init, `27 0B E0 48 65 6C 6C 6F 48 6F`, `27 0B E0 77 41 72 65 59 6F 75`
+  ("HelloHowAreYou"), then `82 82 00 09 <bank> <lo> <hi> <n> <cs>` → `92 92 .. <len at byte 3> <n bytes> <cs>`.
+- write/recover sequences are in README; the firmware blocks them.
+- Image: 0xE000 bytes (56 KB), checksum byte 0xDFEF makes the sum 0, ECM ID at 0xC3EE (= first 5 bytes of table
+  0x00), Keihin code at 0xDFF0 (`KYJA203`). Known ECM IDs: `01 00 B8 05 02` = KYJ-922, `01 00 B8 0F 01` = KYJ-971.
+- 922 image SHA-256 `dcf710d07cf9f8bb4c4c900d502b20fc615583dd610d5fe53ed44a428e1c0224`, sum OK. 971 image sum 0xF2
+  (bad checksum: modified or bad read?).
+- 922 vs 971 differ at 0x47F2-3, 0x49A2-3, 0x6A85-89, 0x6BCA-B, 0x6F2A-B, 0x6F34-5, 0x6F55, 0xA001-03,
+  0xAD40-0xADA0 (five 9-byte rows, stride 22: a 2-D table, 922 = 3F/40, 971 = 39/3A), 0xC3F1-2 (ECM ID),
+  0xC528-0xC545 (8 × 4 bytes: `00 33 71 C7` vs `03 FE 71 C7` …), 0xDFEF. Candidate calibration areas, meaning unknown.
+- Vectors at 0x0000 are 16-bit big-endian (reset 0x0082): looks like a Renesas H8/300H Tiny with 56 KB flash
+  (H8/3687?). Unconfirmed until the chip marking is read.
 
-## Protocol (community-documented, NOT yet confirmed on this bike)
-10400 8N1. Wake-up: K-line low 70 ms, high 130 ms. `FE 04 FF FF` (no reply), then `72 05 00 F0 99` → `02 04 00 FA`.
-Read a table: `72 05 71 <t> <cs>` → `02 <len> 71 <t> <data> <cs>`. Byte 1 is the total length, and all bytes sum
-to 0 mod 256. Faults: `72 05 74 <n>` current / `73 <n>` past (layout a guess). Clear: `72 05 60 03` (unverified).
-
-## Status / unverified
-- 2026-10-27: it talks on the bike (C6, COM6 on the new PC). The first fault was the interface GND not joined to the
-  ESP32/DLC G. Wake-up, init, table 0x11 and the fault tables all answer. Key on, engine off, table 0x11 read
-  `00 00 19 00 96 40 98 40 93 64 FF FF 7D 00 00 00 80 55 28 6E`, which decodes sensibly with `TABLE11` (0 rpm,
-  TPS 0.49 V, coolant/air 24 °C, MAP 100 kPa, battery 12.5 V); still confirm throttle/rpm bytes move. Bytes 17-19 unknown.
-- Fault rows: byte 0 unknown, then (main, sub) pairs. Current: 54-2 (bank angle sensor is physically missing).
-  Past: 1-2, 8-1, 9-2, 12-1, 54-1, 54-2.
-- First log (logs/20261027_103451, cold, on the stand): stalls whenever the throttle closes, starts only with
-  throttle open, battery 12.4-13.0 V running (not charging). Steady at 12 % throttle is fine (2400 ± 80 rpm).
-- Second log (logs/20261027_104155, 48 → 70 °C, revved to 6,800 rpm): **Clear codes works on the MC41** (`72 05 60 03`
-  → `02 05 60 01 98`; past codes went to none, then only 54-2 came back). Same stalls on closing the throttle.
-  Battery never above 12.9 V even at 3,500-6,800 rpm (not charging). Table 0x20 byte 0 went FF → 0x26 → 0x01-0x08
-  and stayed low as it warmed (lean, if it is the O2 sensor).
-- Candidate decodes from that log (unconfirmed): table 0x11 bytes 10-11 always FF; byte 17 and bytes 18-19 (16-bit)
-  fall smoothly as the coolant warms and are higher with the engine stopped (looks like an idle-air / warm-up
-  command). Table 0x20 byte 0 is FF for the first ~30 s of running, then 0x02-0x23 (looks like the O2 sensor; the
-  steady reading 0x04-0x06 would be lean if the scale is 5 V/256), byte 1 always 0x80 (trim at 1.0?). Table D0 bytes
-  11-12 = crank period (rpm ≈ 2,460,000 / value). Table D1 byte 4: 00 stopped, 01 running, 05 on throttle openings.
-- `check` steps: 1 bridge, 2 line idles high, 3 hold-low seen, 4 echo, 5 ECU init, 6 table 0x11. On the bench
-  (9 V battery for the 12 V, no ECU) 1-4 should pass.
-- The bike "runs badly": ask Neil for the symptoms; diagnose from the session logs (marks, fault codes, sensor
-  plausibility: temperatures, throttle zero, MAP vs rpm, battery, injector/advance).
-
-## Phone app first try (2026-10-27): NOT WORKING at the bike
-Neil reported "it's not working" with the WiFi firmware on the C6 at the bike; no details yet (ask: does the
-CBR250R-DLC WiFi appear, does the page load, what do the status line and Messages say?). Debug from the laptop over
-USB with the board still on the bike:
-1. Open the port, send "\n", then `I`: prints status, SD, and the last 10 messages without taking the K-line. Send
-   nothing else for 8 s first, or the board is in USB-bridge mode.
-2. Then `python pc/honda_dlc.py COMx check` (this takes the K-line: bridge mode).
-On the bench (interface powered, no ECU) check steps 1-4 passed with this firmware. Step 5 failed with
-`BAD_ECHO byte 0 sent FE got F9`: the first byte after the wake-up pulse came back corrupt. The wake-up code is
-unchanged from the version that worked on the bike, but `readByte()` now yields with `vTaskDelay(1)` and the ECU
-task shares the CPU with WiFi; suspect timing, and compare with the PC app's `W` on the same board. If needed, add a
-short delay after `klineBegin()` in `wakeInit()` (the UART re-attach can produce a glitch byte) before sending
-`FE 04 FF FF`.
-
-## Workshop manual
-Neil's copy: `D:\workshopmanual-cbr250r_2011-29032019-1427.pdf` (499 scanned pages, no text: render pages with
-PyMuPDF and read the images). PDF page ≈ manual page + 111 for section 5 early pages, + 110 from about 5-50.
-- 5-3 specs: idle 1,400 ± 100 rpm, fuel pressure at idle 294 kPa, pump flow 69.2 cm³ / 10 s, injector 11-13 Ω,
-  throttle body GQ9JA. 5-5 symptom table. 5-13 erase DTCs with the SCS connector. 5-14 DTC index (codes are
-  main-sub as decoded). 5-15 sensor unit (MAP + TP + IAT, one 5P connector). 5-50 throttle valve fully closed
-  position reset (needed after a sensor unit / throttle body change). 17-7 charging test: warm, high beam,
-  5,000 rpm, battery V < charging V < 15.5 V.
-- Parts ordered (2026-10-27): throttle body, fuel pump with regulator, IACV, injector. Bank angle sensor is missing.
-
-## Plan after it talks (agreed)
-Always-on unit on the bike: C6 powered by a 12 V → USB-C adaptor fed from the key-switched Bl/Bu (1 A fuse), ESP32
-logs every ride to its microSD, phone connects to the ESP32's own WiFi hotspot and opens a web page (live values,
-trend, fault codes, log download). No flashing/tuning of the ECU: read only, apart from clearing codes.
+## Status
+- 2026-10-27: project started, research done, bridge firmware flashed on the C3 (COM15), `remap.py` tested only
+  against the demo ECU and the stock images. Next: on the bike, `check`, then `id` (which ECU is it?), then, with
+  Neil, `backup --yes` (engine off, battery OK or on a charger).
+- The bike also has mechanical faults to fix first (from HondaDLC logs): stalls when the throttle closes, battery
+  not charging (12.4-12.9 V at 3,500-6,800 rpm), DTC 54-2 (bank angle sensor missing). Parts on order: throttle
+  body, fuel pump with regulator, IACV, injector. Workshop manual: `D:\workshopmanual-cbr250r_2011-29032019-1427.pdf`
+  (scanned; idle 1,400 ± 100 rpm, 5-50 throttle position reset after a throttle body change, 17-7 charging test).
+- Open questions: MCU type; does the read work on a stock ECU; any boot-mode pin; where fuel/ignition maps are.
 
 ## Neil's preferences
 - Plain, practical explanations; he builds the hardware himself (Jaycar parts).
-- Ask before flashing a board he hasn't named for it. Commit with "Co-Authored-By" lines; he creates GitHub repos by hand.
+- Commit messages end with a Co-Authored-By line; he creates GitHub repos by hand.

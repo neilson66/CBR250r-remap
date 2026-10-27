@@ -1,4 +1,7 @@
-﻿__pycache__/
+backups/
+reference/
+__pycache__/
+*.pyc
 pc/*.csv
 pc/dump_*.json
 build/
