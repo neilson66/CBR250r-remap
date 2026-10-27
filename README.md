@@ -95,7 +95,7 @@ on this PC) powered from the laptop's USB. No WiFi, no SD, no phone page: the la
 | Waveshare ESP32-C6-LCD-1.47 | GPIO2 | GPIO3 | 12/13, 9, 4-7 |
 | Waveshare ESP32-S3-LCD-1.47 | GPIO1 | GPIO2 | |
 
-![Wiring diagram](docs/wiring.svg)
+![Wiring diagram](docs/wiring_c3.svg)
 
 ```
 DLC 12V ──|>|── 1k ──┬──────────────── DLC K-line
