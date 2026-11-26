@@ -84,6 +84,13 @@ heater DTCs, bank angle DTCs) are implemented in the editor from the XDF; none t
   reply right after key-on (`07 08 49 7F 61 6D 7F DC`, then `07 08 46 69 6E 2E 7F 27`); ~340 B/s, 169 s per read;
   the fuel pump runs non-stop while the ECU is in read mode. Still to do: copy the backup folder off the laptop
   (USB stick + cloud); confirm the pump primes normally on the next key-on.
+- **2026-11-26: tune 1 built (file only, not written to any ECU):** `python pc/make_tune1.py <backup flash.bin>` →
+  `tunes/tune1_fuel.bin` (+ `.changes.json`; `tunes/*.bin` git-ignored, Honda's code). SHA-256 `5cf79a28…3e84`,
+  120 cells. Full throttle (last 2 columns) 2,750-4,500 and 6,000-9,500 rpm +8 % in A and B; 10-30 % throttle at
+  2,000-4,500 rpm +12 % in **B only**. Why B only: in this backup A and B share only 20 of 638 cells; B has the
+  shape of a throttle map (fits the 4.3 ms logged in the bog after the 0.71 factor), A only makes sense on MAP
+  (as the XDF says), so A's 10-30 % columns would be ~46-69 kPa cruise. Their last columns agree from 3,000 rpm up.
+  When the ECU uses A vs B is still unknown: if the bog doesn't improve, that's the first suspect.
 - **2026-11-26: read `TUNE_PLAN.md` first.** Charging fixed, ride logs in `logs/rides/` (analyse with
   `pc/ride_analysis.py`), stock map confirmed against logged injector time, lean at full throttle and a low-rpm
   part-throttle bog both traced to the stock fuel map. Next: fit injector/MAP/IACV, then read the ECU with

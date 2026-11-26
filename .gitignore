@@ -5,3 +5,5 @@ __pycache__/
 pc/*.csv
 pc/dump_*.json
 build/
+tunes/*.bin
+tunes/*.bin.changes.json
