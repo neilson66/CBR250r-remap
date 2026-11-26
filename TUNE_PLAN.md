@@ -68,7 +68,8 @@ Only one clean pull in one direction, so treat single bands (the dip at 5,000) a
      Disconnect the board's 12 V feed and run it from the laptop; the K-line interface takes its 12 V from the DLC.
    - Engine off, key on, battery charged: `python pc/remap.py COMx check`, then `id`, then `backup --yes`.
    - Check the backup (two identical reads, sum 0 mod 256, SHA-256), copy it off the laptop.
-   - Flash the HondaDLC scanner firmware (`firmware/HondaKLine` in that repo) back onto the C6.
+   - Flash the HondaDLC scanner firmware back onto the C6: the ready-built files and the esptool command are in
+     that repo's `firmware/HondaKLine/prebuilt_c6/README.md` (no compiling needed), or rebuild `firmware/HondaKLine`.
 4. **Build tune 1 from the backup** (never from the reference images), in `pc/map_editor.py`, both Fuel A and B:
    - Full throttle (76 % and 100 % columns), 2,750-4,500 and 6,000-9,500 rpm: +8 %. Leave 5,000-5,500.
    - Low-rpm part throttle (10-30 % columns), about 2,000-4,500 rpm, where the engine is already at full load:
