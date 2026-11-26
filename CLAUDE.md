@@ -73,6 +73,17 @@ ms scale come from the XDF only: check idle timing against the manual. Off-road 
 heater DTCs, bank angle DTCs) are implemented in the editor from the XDF; none tested on an ECU.
 
 ## Status
+- **2026-11-26: ECU read and backed up** (RemapBridge on the HondaDLC C6, COM6 on the Zenbook; scanner firmware
+  flashed back afterwards). `backups/20261126_115509_backup/flash.bin`, two identical reads, sum OK, SHA-256
+  `2f91f93e96fe240f7577582ee5206a90d3ce9ebc85df993acef6f7b77811762a`. ECM ID `01 00 B8 01 01` (new), Keihin code
+  `KYJA203`, checksum byte D5. vs KYJ-971 it differs only at 0xA003 (7C vs 3C), 0xAD40-0xADA0 (five rows inside the
+  neutral ignition map: 3F/40 like the 922, 971 has 39/3A), ECM ID and checksum. Fuel A/B and in-gear ignition are
+  identical to both stock images, so `KYJA203.json` applies. **This is the image every tune starts from.**
+  Learned doing it: the K-line reads high even with the key off, so `backup` now detects the key cycle by the ECU
+  stopping/starting to answer the wake-up (`--keyed` skips the wait); the security access (`27 …`) only gets a
+  reply right after key-on (`07 08 49 7F 61 6D 7F DC`, then `07 08 46 69 6E 2E 7F 27`); ~340 B/s, 169 s per read;
+  the fuel pump runs non-stop while the ECU is in read mode. Still to do: copy the backup folder off the laptop
+  (USB stick + cloud); confirm the pump primes normally on the next key-on.
 - **2026-11-26: read `TUNE_PLAN.md` first.** Charging fixed, ride logs in `logs/rides/` (analyse with
   `pc/ride_analysis.py`), stock map confirmed against logged injector time, lean at full throttle and a low-rpm
   part-throttle bog both traced to the stock fuel map. Next: fit injector/MAP/IACV, then read the ECU with

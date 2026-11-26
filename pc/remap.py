@@ -37,6 +37,7 @@ READ_CHUNK = 8             # bytes per read request (HondaECU uses 8 to 12)
 KNOWN_ECMIDS = {
     bytes.fromhex("0100B80502"): "CBR250R 2011-14, 38770-KYJ-922",
     bytes.fromhex("0100B80F01"): "CBR250R 2011-14, 38770-KYJ-971",
+    bytes.fromhex("0100B80101"): "Neil's MC41 (read 2026-11-26; KYJA203, nearly the same as KYJ-971)",
 }
 
 PASSWORD = (bytes.fromhex("E0 48 65 6C 6C 6F 48 6F"), bytes.fromhex("E0 77 41 72 65 59 6F 75"))
@@ -134,6 +135,26 @@ def wait_key_cycle(link):
     time.sleep(0.5)
 
 
+def wait_ecu_key_cycle(link, ecu: Ecu) -> bytes:
+    """Key off -> on, seen by the ECU stopping and starting to answer the wake-up (the K-line level can't show it
+    on the bike: it read high with the key off). Returns the first init reply after key-on, with no delay, so the
+    security access goes out within a fraction of a second of the ECU booting."""
+    if isinstance(link, SimFlashLink):
+        return ecu.connect()
+    print("Turn the key OFF ...", flush=True)
+    while True:
+        try:
+            ecu.connect()
+        except DlcError:
+            break
+    print("Key off seen. Now turn the key ON (kill switch at RUN, engine OFF) ...", flush=True)
+    while True:
+        try:
+            return ecu.connect()
+        except DlcError:
+            pass
+
+
 def security_access(ecu: Ecu):
     for part in PASSWORD:
         frame = ecu.raw(bytes([0x27, len(part) + 3]) + part)
@@ -192,10 +213,14 @@ def cmd_id(link) -> int:
     return 0
 
 
-def cmd_backup(link) -> int:
-    wait_key_cycle(link)
+def cmd_backup(link, keyed: bool = False) -> int:
+    # --keyed: the key was just cycled by hand. Needed when the K-line still reads high with the key off (seen on
+    # the bike 2026-11-26), so wait_key_cycle() can't see the key go off.
     ecu = Ecu(link)
-    print("init:", hexs(ecu.connect()))
+    if keyed:
+        print("init:", hexs(ecu.connect()))
+    else:
+        print("init:", hexs(wait_ecu_key_cycle(link, ecu)))
     security_access(ecu)
     d = new_dir("backup")
     reads = []
@@ -261,7 +286,7 @@ def main(argv) -> int:
         if mode == "id":
             return cmd_id(link)
         if mode == "backup":
-            return cmd_backup(link)
+            return cmd_backup(link, keyed="--keyed" in rest)
         print("unknown mode", mode)
         return 1
     except KeyboardInterrupt:
