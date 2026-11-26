@@ -174,9 +174,11 @@ static int wakeInit(uint8_t *out, size_t cap) {
   digitalWrite(PIN_KTX, KLINE_INVERTED ? HIGH : LOW);   // K-line low
   delay(WAKE_LOW_MS);
   digitalWrite(PIN_KTX, KLINE_INVERTED ? LOW : HIGH);   // K-line high
-  delay(WAKE_HIGH_MS);
+  delay(WAKE_HIGH_MS - 5);
   klineBegin();
-  delay(2);                                             // let the UART re-attach settle, drop any glitch byte
+  // Re-attaching the UART puts a glitch on the line that arrives as a junk byte (seen as F9) about 1 ms later;
+  // let it finish before draining, or it is taken for the echo of FE (same fix as the HondaDLC scanner).
+  delay(5);
   drainRx();
   static const uint8_t wake[] = {0xFE, 0x04, 0xFF, 0xFF};  // no reply expected
   int r = sendPacket(wake, sizeof wake);
