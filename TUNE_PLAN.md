@@ -28,6 +28,7 @@ Handoff note so the work can carry on from the laptop. Read this, then CLAUDE.md
 | 20261124_S0010 | Ride, O2 once a second; warm idle stall at 331 s |
 | 20261124_S0014 | Short ride, O2 once a second |
 | 20261126_1049_S0005 | **Baseline.** 4th-gear pull 41-52 s (3,000 -> 8,230 rpm), then normal riding, O2 4/s |
+| 20261126_1716_S0028 | Stock parts, with a pillion (not comparable for power). No stall, idle 1,240-1,500 rpm, coolant max 88 C, no codes. Same lean full throttle and same bog at 100 kPa / 7-12 % throttle (39.9, 117.1, 409.1 s) |
 
 ## What the logs show
 1. **Lean at full throttle almost everywhere.** O2 0.04-0.20 V at >= 80 % throttle from 3,000 to 9,000 rpm,
