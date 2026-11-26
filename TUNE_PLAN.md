@@ -86,7 +86,12 @@ Only one clean pull in one direction, so treat single bands (the dip at 5,000) a
 Ignition timing comes later, one careful A/B road test at a time (no knock sensor).
 
 ## Also open (2026-11-26)
-- **Fan:** Neil saw 99 C on the dash at idle with the fan off. No log has gone above 90 C, so it isn't known
+- **Fan: works (2026-11-26, on the stand, scanner coolant temp every 3 s):** the fan came on and the coolant then
+  cycled 96-101 C, about every 30-40 s (fan on ~100-101 C, off ~96 C, inferred from the temperature; the fan state
+  itself isn't in the logged data). Idle 1,340-1,450 rpm with the fan running, no stall in 2.5 min; battery
+  13.3-13.8 V at idle with the fan on (one 11.8 V reading at 4,000 rpm, probably as the fan started); stator wires
+  cool. So the 99 C with the fan off seen before was just below switch-on. Earlier note:
+  Neil saw 99 C on the dash at idle with the fan off. No log has gone above 90 C, so it isn't known
   whether the ECU switched it. The fan-on temperature isn't in the manual (ECU-controlled, probably ~100-105 C)
   and isn't in any map definition yet. Test: 10 A fan fuse; bridge the relay socket (fuse, wiring, motor); relay
   test manual 6-18 (coil Bl/W-Br/R, contacts Bl/W-Bu); then idle from warm, logging, MARK when the fan starts or at
