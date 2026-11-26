@@ -73,6 +73,10 @@ ms scale come from the XDF only: check idle timing against the manual. Off-road 
 heater DTCs, bank angle DTCs) are implemented in the editor from the XDF; none tested on an ECU.
 
 ## Status
+- **2026-11-26: read `TUNE_PLAN.md` first.** Charging fixed, ride logs in `logs/rides/` (analyse with
+  `pc/ride_analysis.py`), stock map confirmed against logged injector time, lean at full throttle and a low-rpm
+  part-throttle bog both traced to the stock fuel map. Next: fit injector/MAP/IACV, then read the ECU with
+  RemapBridge flashed onto the HondaDLC C6 board, then tune 1 from that backup.
 - 2026-10-27: project started, research done, bridge firmware flashed on the C3 (COM15), `remap.py` tested only
   against the demo ECU and the stock images. Next: on the bike, `check`, then `id` (which ECU is it?), then, with
   Neil, `backup --yes` (engine off, battery OK or on a charger).

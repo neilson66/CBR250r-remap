@@ -1,0 +1,17 @@
+session S0014
+init reply 02 04 00 FA
+board uptime 8 s
+extra tables:
+table 10 (0): 
+table 12 (0): 
+table 13 (0): 
+table 14 (0): 
+table 15 (0): 
+table 16 (0): 
+table 17 (0): 
+table 20 (3): 11 80 00
+table 21 (0): 
+table 60 (0): 
+table 61 (20): 09 34 24 05 3C 6E 8F 44 47 2E FF FF 83 00 03 65 BD 21 12 24
+table D0 (14): 00 00 00 00 00 00 00 00 00 00 00 02 6A CB
+table D1 (6): 01 00 00 00 01 00
