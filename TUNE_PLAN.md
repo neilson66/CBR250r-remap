@@ -85,6 +85,18 @@ Only one clean pull in one direction, so treat single bands (the dip at 5,000) a
 
 Ignition timing comes later, one careful A/B road test at a time (no knock sensor).
 
+## Also open (2026-11-26)
+- **Fan:** Neil saw 99 C on the dash at idle with the fan off. No log has gone above 90 C, so it isn't known
+  whether the ECU switched it. The fan-on temperature isn't in the manual (ECU-controlled, probably ~100-105 C)
+  and isn't in any map definition yet. Test: 10 A fan fuse; bridge the relay socket (fuse, wiring, motor); relay
+  test manual 6-18 (coil Bl/W-Br/R, contacts Bl/W-Bu); then idle from warm, logging, MARK when the fan starts or at
+  ~105 C with no fan (then switch off). Compare the scanner's coolant temp with the dash. ECU fan output is pin 19
+  (FANC, Br/R) switching the relay coil to ground.
+- **Wideband:** model still unknown. Neil is making a tailpipe sniffer (go 40-50 cm deep, sensor tip pointing up,
+  outlet open). Trust full throttle and steady cruise; idle, low rpm and closed throttle read lean (air drawn in,
+  PAIR air); allow ~0.2-0.5 s delay. Plan: log it over a second UART on the scanner's C6 (wideband TX -> a free GPIO
+  RX, shared ground; level shifting depends on the model), AFR column in live.csv, AFR card on the phone page.
+
 ## Laptop setup
 - Clone github.com/neilson66/CBR250r-remap and github.com/neilson66/HondaDLC.
 - `pip install pyserial pandas numpy`.
