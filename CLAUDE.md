@@ -91,6 +91,14 @@ heater DTCs, bank angle DTCs) are implemented in the editor from the XDF; none t
   shape of a throttle map (fits the 4.3 ms logged in the bog after the 0.71 factor), A only makes sense on MAP
   (as the XDF says), so A's 10-30 % columns would be ~46-69 kPa cruise. Their last columns agree from 3,000 rpm up.
   When the ECU uses A vs B is still unknown: if the bog doesn't improve, that's the first suspect.
+- **2026-11-26: spare ECU for write/recovery tests:** Neil is buying one ($60) from a **CB190R / CBF190** (Honda
+  China, wiring diagram "CBF190WH-G (CH)"), physically identical to his. Bench only, never on the CBR. Same 33P ECM,
+  and the pins we use are the same numbers as the CBR250R's: A-1 IGP 12 V key-on (Br/Bu on the 190), A-30 K-line
+  (Y), A-15 SCS (Bu). Grounds A-9 PG1, A-10 PG2 (G), A-2 LG (G/Bl); A-4 SG is the sensor ground output. No
+  battery-backup pin, no HISS shown. Bench: 12 V (fused) to A-1, ground to A-9/A-10/A-2, K-line to A-30, the
+  interface's 12 V pull-up from the same supply. Connector face numbering isn't in the diagram: use the moulded
+  numbers and check PG1-PG2 continuity. Not yet known: same chip / image size / read password. Read it first.
+  Pictures on Neil's other PC: `Pictures\190ecm1.png`, `190ecm2.png` (not in git: Honda's manual).
 - **2026-11-26: read `TUNE_PLAN.md` first.** Charging fixed, ride logs in `logs/rides/` (analyse with
   `pc/ride_analysis.py`), stock map confirmed against logged injector time, lean at full throttle and a low-rpm
   part-throttle bog both traced to the stock fuel map. Next: fit injector/MAP/IACV, then read the ECU with
