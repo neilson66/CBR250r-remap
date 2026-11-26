@@ -35,7 +35,9 @@ from here.** Origin: https://github.com/neilson66/CBR250r-remap (Neil creates re
   Flashed to the C3 on COM15 on 2026-10-27 (answers P and I; not yet run against the ECU).
 - `pc/honda_dlc.py`: shared K-line base from the scanner (`SerialLink` accepts both bridges; `query(pkt, len_pos)`),
   `Ecu`, `TABLE11`, `DTC_NAMES`, `check`.
-- `pc/map_editor.py` (Tkinter, files only), `pc/rom.py` (Rom/Table/Axis, edits only inside defined tables, save_as
+- `pc/map_editor.py` (Tkinter, files only; "Live" toolbar = cell tracking from `pc/live_cells.py`: the scanner on a
+  COM port (table reads only), `demo`, or a replayed scanner log; dot + trail where the engine is, per-cell time /
+  O2 marks, hover shows logged injector time vs the map. Tested on S0005: full-throttle cells give 0.70-0.73 x map), `pc/rom.py` (Rom/Table/Axis, edits only inside defined tables, save_as
   fixes the checksum and refuses backups/, reference/ and the opened file), `pc/definitions/KYJA203.json` (axes,
   tables, off-road options with status "not found"; matched by the Keihin code at 0xDFF0).
 - `pc/remap.py`: `check | id | backup --yes | verify <bin> | compare <a> <b>`, `demo` port = pretend ECU with a

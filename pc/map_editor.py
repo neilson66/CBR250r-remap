@@ -12,6 +12,11 @@
 - Off-road options: tick to apply (O2 closed loop off, fault codes off); untick puts the stock values back.
 - Save as… writes a new file with the checksum fixed, plus <file>.changes.json listing every change.
   It refuses to overwrite the opened file or anything in backups/ or reference/.
+- Live (second toolbar): cell tracking. Source: the scanner on a COM port (read only: table reads), "demo", or
+  "Replay log…" (a scanner live.csv, at 1x / 4x / 16x or all at once). On fuel and ignition maps the black dot is
+  where the engine is now (between cells, as the ECU interpolates), with a trail; "Show" adds per-cell marks:
+  time in cell (grey dot, bigger = more time) or O2 (blue lean, green 0.45 V, red rich; narrowband: richer or
+  leaner than 14.7:1 only). Hover a cell for its time, O2 and logged injector time vs the map value.
 """
 
 from __future__ import annotations
@@ -21,9 +26,24 @@ import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from live_cells import CellStats, EcuSource, ReplaySource
 from rom import PROJECT, Rom, RomError, SIZES, num
 
 MAP_W, LIST_W, CELL_H, HEAD_W, HEAD_H = 46, 150, 19, 96, 34
+TRAIL_N = 30
+REPLAY_SPEEDS = {"1x": 1.0, "4x": 4.0, "16x": 16.0, "all at once": 0.0}
+SHOW_MODES = ("dot only", "time in cell", "O2")
+
+
+def o2_colour(v: float) -> str:
+    """Narrowband O2 volts → blue (lean, 0.1 V), green (0.45 V), red (rich, 0.8 V)."""
+    t = max(0.0, min(1.0, (v - 0.1) / 0.7))
+    stops = [(0.0, (40, 90, 230)), (0.5, (40, 170, 60)), (1.0, (220, 40, 40))]
+    for (a, ca), (b, cb) in zip(stops, stops[1:]):
+        if t <= b:
+            f = (t - a) / (b - a)
+            return "#%02x%02x%02x" % tuple(int(ca[i] + (cb[i] - ca[i]) * f) for i in range(3))
+    return "#dc2828"
 CONF_TAG = {"confirmed": "✔", "likely": "~", "guess": "?"}
 
 
@@ -125,9 +145,15 @@ class App(tk.Tk):
         self.sel = None            # (r0, c0, r1, c1)
         self.anchor = None
         self.opt_vars = {}
+        self.source = None          # live data source (live_cells)
+        self.samples = []           # every live sample this session
+        self.last = None            # newest sample
+        self.stats = None           # CellStats for the shown map's axes
+        self.trail = []             # recent (row pos, col pos)
         self._build()
         if path:
             self.open(path)
+        self.after(100, self.live_poll)
 
     # ---------------------------------------------------------------- layout
     def _build(self):
@@ -138,6 +164,29 @@ class App(tk.Tk):
             ttk.Button(bar, text=text, command=cmd).pack(side="left", padx=2)
         self.info = ttk.Label(bar, text="Open an image (.bin) to start", font=("Segoe UI", 10))
         self.info.pack(side="left", padx=12)
+
+        live = ttk.Frame(self, padding=(4, 0, 4, 4))
+        live.pack(side="top", fill="x")
+        ttk.Label(live, text="Live:", font=("Segoe UI", 10, "bold")).pack(side="left")
+        self.port = tk.StringVar(value="demo")
+        self.portbox = ttk.Combobox(live, textvariable=self.port, width=8, postcommand=self._ports)
+        self.portbox.pack(side="left", padx=2)
+        self.live_btn = ttk.Button(live, text="Start", width=6, command=self.live_toggle)
+        self.live_btn.pack(side="left", padx=2)
+        ttk.Button(live, text="Replay log…", command=self.ask_replay).pack(side="left", padx=2)
+        self.speed = tk.StringVar(value="4x")
+        ttk.Combobox(live, textvariable=self.speed, values=list(REPLAY_SPEEDS), width=9, state="readonly").pack(
+            side="left", padx=2)
+        ttk.Label(live, text="  show").pack(side="left")
+        self.show = tk.StringVar(value="time in cell")
+        sb = ttk.Combobox(live, textvariable=self.show, values=SHOW_MODES, width=11, state="readonly")
+        sb.pack(side="left", padx=2)
+        sb.bind("<<ComboboxSelected>>", lambda e: self.draw_live())
+        ttk.Button(live, text="Clear", command=self.live_clear).pack(side="left", padx=2)
+        self.live_vals = ttk.Label(live, text="", font=("Consolas", 10))
+        self.live_vals.pack(side="left", padx=10)
+        self.live_status = ttk.Label(live, text="", foreground="#666")
+        self.live_status.pack(side="left", padx=6)
 
         main = ttk.Frame(self)
         main.pack(fill="both", expand=True)
@@ -407,6 +456,122 @@ class App(tk.Tk):
                                HEAD_H + (r1 + 1) * CELL_H, outline="#1565c0", width=3)
         c.configure(scrollregion=(0, 0, HEAD_W + v.ncols * w + 4, HEAD_H + v.nrows * CELL_H + 4))
         self._sel_text()
+        self.draw_live()
+
+    # ---------------------------------------------------------------- live cell tracking
+    def _ports(self):
+        try:
+            from serial.tools import list_ports
+            ports = [p.device for p in list_ports.comports()]
+        except ImportError:
+            ports = []
+        self.portbox.config(values=ports + ["demo"])
+
+    def live_toggle(self):
+        if self.source and not self.source.stopped():
+            self.source.stop()
+            self.live_btn.config(text="Start")
+            return
+        self.live_start(EcuSource(self.port.get().strip() or "demo"))
+
+    def ask_replay(self):
+        start = os.path.join(PROJECT, "logs", "rides")
+        p = filedialog.askopenfilename(initialdir=start if os.path.isdir(start) else PROJECT,
+                                       filetypes=[("Scanner log", "*.csv"), ("All", "*.*")])
+        if p:
+            self.replay(p, REPLAY_SPEEDS.get(self.speed.get(), 4.0))
+
+    def replay(self, path, speed=4.0):
+        self.live_clear()
+        self.live_start(ReplaySource(path, speed))
+
+    def live_start(self, src):
+        if self.source:
+            self.source.stop()
+        self.source = src.start()
+        self.live_btn.config(text="Stop")
+
+    def live_clear(self):
+        self.samples, self.last, self.trail = [], None, []
+        self.stats = None
+        self.live_vals.config(text="")
+        self.draw_live()
+
+    def _map_view(self):
+        v = self.view
+        return v if isinstance(v, TableView) and v.t.kind == "map" else None
+
+    def _stats(self):
+        """CellStats for the shown map's axes, rebuilt from all samples when the table or its columns change."""
+        v = self._map_view()
+        if not v:
+            return None
+        rk, ck = v.t.rows_axis.key, v.t.cols_axis.key
+        if not self.stats or (self.stats.rk, self.stats.ck) != (rk, ck):
+            self.stats = CellStats(v.t.rows_axis.values(), v.t.cols_axis.values(), rk, ck)
+            for s in self.samples:
+                self.stats.add(s)
+        return self.stats
+
+    def live_poll(self):
+        src, new = self.source, 0
+        if src:
+            st = self._stats()
+            while new < 20000:
+                try:
+                    s = src.q.get_nowait()
+                except Exception:  # queue.Empty
+                    break
+                self.samples.append(s)
+                if st:
+                    st.add(s)
+                self.last = s
+                new += 1
+            self.live_status.config(text=src.status)
+            if src.stopped() or not src.thread.is_alive():
+                self.live_btn.config(text="Start")
+        if new:
+            s = self.last
+            self.live_vals.config(text=f"{s.rpm:5d} rpm  {s.tps:5.1f} %  {s.kpa:3d} kPa  inj {s.inj:5.2f} ms  "
+                                       f"adv {s.adv:5.1f}°  O2 " + (f"{s.o2:.2f} V" if s.o2 is not None else "  - "))
+            self.draw_live()
+        self.after(100, self.live_poll)
+
+    def _xy(self, rpos, cpos):
+        return HEAD_W + (cpos + 0.5) * self.view.cell_w, HEAD_H + (rpos + 0.5) * CELL_H
+
+    def draw_live(self):
+        c = self.canvas
+        c.delete("live")
+        v, st = self._map_view(), self._stats()
+        if not v or not st or not self.samples:
+            return
+        w, mode = v.cell_w, self.show.get()
+        if mode == "time in cell":
+            top = st.max_w()
+            for r in range(st.n):
+                for col in range(st.m):
+                    if st.w[r][col] > 0.5:
+                        rad = 2 + 6 * (st.w[r][col] / top) ** 0.5
+                        x, y = HEAD_W + col * w + 7, HEAD_H + r * CELL_H + CELL_H / 2
+                        c.create_oval(x - rad / 2, y - rad / 2, x + rad / 2, y + rad / 2, fill="#333",
+                                      outline="", tags="live")
+        elif mode == "O2":
+            for r in range(st.n):
+                for col in range(st.m):
+                    o2 = st.o2(r, col)
+                    if o2 is not None:
+                        x, y = HEAD_W + col * w, HEAD_H + r * CELL_H
+                        c.create_rectangle(x + 1, y + CELL_H - 5, x + w - 1, y + CELL_H - 1, fill=o2_colour(o2),
+                                           outline="", tags="live")
+        recent = [s for s in self.samples[-TRAIL_N * 3:] if s.rpm >= 300][-TRAIL_N:]
+        pts = [self._xy(*st.pos(s)) for s in recent if st.pos(s)]
+        if len(pts) > 1:
+            c.create_line(*[k for p in pts for k in p], fill="#222", width=2, smooth=True, tags="live")
+        if self.last and self.last.rpm >= 300 and st.pos(self.last):
+            x, y = self._xy(*st.pos(self.last))
+            c.create_oval(x - 7, y - 7, x + 7, y + 7, outline="white", width=3, tags="live")
+            c.create_oval(x - 5, y - 5, x + 5, y + 5, fill="black", outline="", tags="live")
 
     # ---------------------------------------------------------------- mouse / selection
     def cell_at(self, e):
@@ -469,6 +634,15 @@ class App(tk.Tk):
                f"(stock {v.text(r, c, org)})   raw {val}   address {v.addr(r, c):04X}")
         if self.compare is not None:
             txt += f"   {self.compare_name}: {v.text(r, c, v.get_in(self.compare, r, c))}"
+        st = self._stats() if self.samples else None
+        if st and st.w[r][c] > 0.5:
+            o2, inj = st.o2(r, c), st.inj(r, c)
+            txt += f"   |  live: {st.w[r][c] / max(1, st.total) * 100:.1f} % of running time"
+            txt += f", O2 {o2:.2f} V" if o2 is not None else ", no O2"
+            if inj is not None:
+                txt += f", logged inj {inj:.2f} ms"
+                if v.t.unit.startswith("ms") and v.t.value(r, c, val) > 0:
+                    txt += f" ({inj / v.t.value(r, c, val):.2f} x map)"
         self.hover.config(text=txt)
 
     # ---------------------------------------------------------------- editing
