@@ -93,6 +93,10 @@ heater DTCs, bank angle DTCs) are implemented in the editor from the XDF; none t
   shape of a throttle map (fits the 4.3 ms logged in the bog after the 0.71 factor), A only makes sense on MAP
   (as the XDF says), so A's 10-30 % columns would be ~46-69 kPa cruise. Their last columns agree from 3,000 rpm up.
   When the ECU uses A vs B is still unknown: if the bog doesn't improve, that's the first suspect.
+- **2026-11-26: one firmware for both (Neil asked):** the HondaDLC scanner firmware now has `Q` (flash reads) and
+  the same write lock as RemapBridge, so `remap.py COMx id/backup` and the map editor's Live view run on the C6
+  with the scanner firmware still on it (WiFi logger when alone, USB bridge when the laptop talks). Built, not yet
+  flashed or tested on the board. RemapBridge stays for the C3 and as the place where writing gets developed.
 - **2026-11-26: spare ECU for write/recovery tests:** Neil is buying one ($60) from a **CB190R / CBF190** (Honda
   China, wiring diagram "CBF190WH-G (CH)"), physically identical to his. Bench only, never on the CBR. Same 33P ECM,
   and the pins we use are the same numbers as the CBR250R's: A-1 IGP 12 V key-on (Br/Bu on the 190), A-30 K-line
